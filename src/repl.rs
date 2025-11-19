@@ -264,8 +264,8 @@ impl ReplSession {
         println!("{:<20} {}", "/help, /h".cyan(), "Show this help message");
         println!("{:<20} {}", "/logs <query>".cyan(), "Search OTEL logs");
         println!("{:<20} {}", "/provider [name]".cyan(), "Show or switch AI provider");
-        println!("{:<20} {}", "/export [filename]".cyan(), "Export conversation (json or csv, e.g., /export chat.csv)");
-        println!("{:<20} {}", "/history".cyan(), "Show conversation history");
+        println!("{:<20} Export conversation (json or csv, e.g., /export chat.csv)", "/export [filename]".cyan());
+        println!("{:<20} Show conversation history", "/history".cyan());
         println!();
         println!("{}", "Just type your message to chat with AI.".dimmed());
         println!();
