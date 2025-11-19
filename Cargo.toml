@@ -42,6 +42,9 @@ dirs = "5.0"
 # Async Trait
 async-trait = "0.1"
 
+# Time
+chrono = "0.4"
+
 [profile.release]
 opt-level = 3
 lto = true

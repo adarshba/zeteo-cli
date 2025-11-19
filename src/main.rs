@@ -8,6 +8,7 @@ mod config;
 mod logs;
 mod mcp;
 mod providers;
+mod repl;
 
 use config::Config;
 use logs::LogExplorer;
@@ -25,8 +26,12 @@ struct Cli {
     #[arg(short, long, global = true, default_value = "text")]
     output: OutputFormat,
 
+    /// AI provider to use in REPL mode (openai, vertex, google, azure)
+    #[arg(short, long, global = true)]
+    provider: Option<String>,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Clone, Debug, clap::ValueEnum)]
@@ -111,7 +116,7 @@ async fn main() -> Result<()> {
     }
     
     let result = tokio::select! {
-        res = run_command(cli.command, cli.output) => res,
+        res = run_command(cli.command, cli.output, cli.provider) => res,
         _ = shutdown_rx.recv() => {
             println!("\n{}", "Received shutdown signal, cleaning up...".yellow());
             Ok(())
@@ -121,8 +126,13 @@ async fn main() -> Result<()> {
     result
 }
 
-async fn run_command(command: Commands, output_format: OutputFormat) -> Result<()> {
-    match command {
+async fn run_command(command: Option<Commands>, output_format: OutputFormat, provider: Option<String>) -> Result<()> {
+    // If no command is provided, enter REPL mode
+    if command.is_none() {
+        return run_repl_mode(provider).await;
+    }
+
+    match command.unwrap() {
         Commands::Logs { query, max, interactive, stream } => {
             handle_logs(query, max, interactive, stream, output_format).await?;
         }
@@ -141,6 +151,11 @@ async fn run_command(command: Commands, output_format: OutputFormat) -> Result<(
     }
     
     Ok(())
+}
+
+async fn run_repl_mode(provider: Option<String>) -> Result<()> {
+    let mut session = repl::create_repl_session(provider).await?;
+    session.run().await
 }
 
 async fn handle_logs(
