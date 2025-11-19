@@ -82,3 +82,42 @@ impl LogExplorer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_explorer_creation() {
+        let explorer = LogExplorer::new("test-server".to_string());
+        assert_eq!(explorer.mcp_server, "test-server");
+    }
+
+    #[test]
+    fn test_log_entry_serialization() {
+        let log = LogEntry {
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            level: "INFO".to_string(),
+            message: "Test message".to_string(),
+            service: Some("test-service".to_string()),
+            trace_id: Some("abc123".to_string()),
+        };
+
+        let json = serde_json::to_string(&log).unwrap();
+        let deserialized: LogEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(log.timestamp, deserialized.timestamp);
+        assert_eq!(log.level, deserialized.level);
+        assert_eq!(log.message, deserialized.message);
+    }
+
+    #[tokio::test]
+    async fn test_search_logs_returns_empty() {
+        let explorer = LogExplorer::new("test-server".to_string());
+        let result = explorer.search_logs("test query", 10).await;
+        assert!(result.is_ok());
+        let logs = result.unwrap();
+        assert_eq!(logs.len(), 0);
+    }
+}
+

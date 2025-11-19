@@ -79,3 +79,36 @@ impl Config {
         Config { servers }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config_has_otel_server() {
+        let config = Config::default_config();
+        assert!(config.servers.contains_key("otel-mcp-server"));
+    }
+
+    #[test]
+    fn test_otel_server_config() {
+        let config = Config::default_config();
+        let server = config.servers.get("otel-mcp-server").unwrap();
+        
+        assert_eq!(server.command, "npx");
+        assert_eq!(server.args, vec!["-y", "otel-mcp-server"]);
+        assert!(server.env.contains_key("ELASTICSEARCH_URL"));
+        assert_eq!(server.env.get("ELASTICSEARCH_URL").unwrap(), "http://localhost:9200");
+    }
+
+    #[test]
+    fn test_config_serialization() {
+        let config = Config::default_config();
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: Config = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(config.servers.len(), deserialized.servers.len());
+        assert!(deserialized.servers.contains_key("otel-mcp-server"));
+    }
+}
+

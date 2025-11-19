@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "otel-mcp-server": {
+      "command": "npx",
+      "args": ["-y", "otel-mcp-server"],
+      "env": {
+        "ELASTICSEARCH_URL": "http://localhost:9200",
+        "ELASTICSEARCH_USERNAME": "elastic",
+        "ELASTICSEARCH_PASSWORD": "changeme",
+        "SERVER_NAME": "otel-mcp-server",
+        "LOGLEVEL": "OFF"
+      }
+    }
+  }
+}
