@@ -1,12 +1,14 @@
 use super::{AiProvider, ChatRequest, ChatResponse};
 use anyhow::Result;
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct GoogleProvider {
     api_key: String,
     model: String,
 }
 
+#[allow(dead_code)]
 impl GoogleProvider {
     pub fn new(api_key: String, model: Option<String>) -> Self {
         GoogleProvider {

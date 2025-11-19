@@ -1,6 +1,7 @@
 use super::{AiProvider, ChatRequest, ChatResponse};
 use anyhow::Result;
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct VertexProvider {
     project_id: String,
@@ -8,6 +9,7 @@ pub struct VertexProvider {
     model: String,
 }
 
+#[allow(dead_code)]
 impl VertexProvider {
     pub fn new(project_id: String, location: String, model: Option<String>) -> Self {
         VertexProvider {

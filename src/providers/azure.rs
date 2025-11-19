@@ -1,6 +1,7 @@
 use super::{AiProvider, ChatRequest, ChatResponse};
 use anyhow::Result;
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct AzureProvider {
     api_key: String,
@@ -8,6 +9,7 @@ pub struct AzureProvider {
     deployment: String,
 }
 
+#[allow(dead_code)]
 impl AzureProvider {
     pub fn new(api_key: String, endpoint: String, deployment: String) -> Self {
         AzureProvider {
