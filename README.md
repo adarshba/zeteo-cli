@@ -71,19 +71,68 @@ zeteo-cli logs --query "error" --max 50
 
 Interactive mode:
 ```bash
-zeteo-cli logs --interactive
+zeteo logs --interactive
+```
+
+JSON output for scripting:
+```bash
+zeteo logs --query "error" --output json | jq '.[] | select(.level=="ERROR")'
 ```
 
 ### AI Chat
 
-Ask questions about your logs or general queries:
+Zeteo supports multiple AI providers. Configure them using environment variables:
+
+#### OpenAI
 ```bash
-zeteo-cli chat "What are the most common error patterns?"
+export OPENAI_API_KEY="your-key-here"
+zeteo chat "What are the most common error patterns?"
+zeteo chat --provider openai "Analyze these logs"
 ```
 
-Specify a provider:
+#### Google AI (Gemini)
 ```bash
-zeteo-cli chat --provider openai "Analyze the last hour of logs"
+export GOOGLE_API_KEY="your-key-here"
+zeteo chat --provider google "Explain OTEL log structure"
+```
+
+#### Vertex AI
+```bash
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GOOGLE_CLOUD_LOCATION="us-central1"  # optional, defaults to us-central1
+gcloud auth application-default login
+zeteo chat --provider vertex "Help me debug this issue"
+```
+
+#### Azure OpenAI
+```bash
+export AZURE_OPENAI_API_KEY="your-key"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT="your-deployment-name"
+zeteo chat --provider azure "Summarize these errors"
+```
+
+Get JSON output:
+```bash
+zeteo chat --output json "What is OpenTelemetry?" | jq '.content'
+```
+
+### Shell Completions
+
+Generate completions for your shell:
+
+```bash
+# Bash
+zeteo completions bash > /etc/bash_completion.d/zeteo
+
+# Zsh
+zeteo completions zsh > ~/.zsh/completion/_zeteo
+
+# Fish
+zeteo completions fish > ~/.config/fish/completions/zeteo.fish
+
+# PowerShell
+zeteo completions powershell > ~/.config/powershell/zeteo.ps1
 ```
 
 ## MCP Server Integration
@@ -134,14 +183,19 @@ cargo clippy
 
 - [x] Basic CLI structure
 - [x] MCP server integration
-- [x] OpenAI provider support
-- [ ] Full Vertex AI implementation
-- [ ] Full Google AI implementation
-- [ ] Full Azure OpenAI implementation
+- [x] OpenAI provider support (fully implemented)
+- [x] Full Vertex AI implementation (with gcloud authentication)
+- [x] Full Google AI implementation (Gemini API)
+- [x] Full Azure OpenAI implementation
+- [x] Shell completions (bash, zsh, fish, powershell)
+- [x] JSON output format for scripting
+- [x] Graceful shutdown handling
 - [ ] Real-time log streaming
 - [ ] Advanced filtering and aggregation
-- [ ] Export functionality
+- [ ] Export functionality (CSV, JSON files)
 - [ ] Interactive TUI mode
+- [ ] Response caching for better performance
+- [ ] Retry logic with exponential backoff
 
 ## Contributing
 

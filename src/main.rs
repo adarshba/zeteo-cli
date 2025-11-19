@@ -203,35 +203,68 @@ async fn handle_chat(
             max_tokens: Some(1000),
         };
         
-        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
-            let provider = providers::OpenAiProvider::new(api_key, None);
-            
-            if stream {
-                println!("{}", "Streaming mode enabled...".cyan());
-            }
+        if stream {
+            println!("{}", "Streaming mode enabled...".cyan());
+        }
 
-            let response = provider.chat(request).await?;
-
-            match output_format {
-                OutputFormat::Text => {
-                    println!("\n{}", response.content.green());
-                }
-                OutputFormat::Json => {
-                    let json = serde_json::json!({
-                        "content": response.content,
-                        "model": response.model,
-                        "provider": provider_name
-                    });
-                    println!("{}", serde_json::to_string_pretty(&json)?);
-                }
+        let response = match provider_name.to_lowercase().as_str() {
+            "openai" => {
+                let api_key = std::env::var("OPENAI_API_KEY")
+                    .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY not set"))?;
+                let provider = providers::OpenAiProvider::new(api_key, None);
+                provider.chat(request).await?
             }
-        } else {
-            println!("{}", "Please set OPENAI_API_KEY environment variable".yellow());
-            println!("{}", "Export it like: export OPENAI_API_KEY=your-key-here".dimmed());
+            "vertex" => {
+                let project_id = std::env::var("GOOGLE_CLOUD_PROJECT")
+                    .map_err(|_| anyhow::anyhow!("GOOGLE_CLOUD_PROJECT not set"))?;
+                let location = std::env::var("GOOGLE_CLOUD_LOCATION")
+                    .unwrap_or_else(|_| "us-central1".to_string());
+                let provider = providers::VertexProvider::new(project_id, location, None);
+                provider.chat(request).await?
+            }
+            "google" => {
+                let api_key = std::env::var("GOOGLE_API_KEY")
+                    .map_err(|_| anyhow::anyhow!("GOOGLE_API_KEY not set"))?;
+                let provider = providers::GoogleProvider::new(api_key, None);
+                provider.chat(request).await?
+            }
+            "azure" => {
+                let api_key = std::env::var("AZURE_OPENAI_API_KEY")
+                    .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_API_KEY not set"))?;
+                let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT")
+                    .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_ENDPOINT not set"))?;
+                let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT")
+                    .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_DEPLOYMENT not set"))?;
+                let provider = providers::AzureProvider::new(api_key, endpoint, deployment);
+                provider.chat(request).await?
+            }
+            _ => {
+                anyhow::bail!("Unknown provider: {}. Supported: openai, vertex, google, azure", provider_name);
+            }
+        };
+
+        match output_format {
+            OutputFormat::Text => {
+                println!("\n{}", response.content.green());
+            }
+            OutputFormat::Json => {
+                let json = serde_json::json!({
+                    "content": response.content,
+                    "model": response.model,
+                    "provider": provider_name
+                });
+                println!("{}", serde_json::to_string_pretty(&json)?);
+            }
         }
     } else {
         println!("{}", "Please provide a message to chat with AI".yellow());
         println!("{}", "Example: zeteo chat \"Explain OTEL logs\"".dimmed());
+        println!();
+        println!("{}", "Supported providers:".bold());
+        println!("  {} - Set OPENAI_API_KEY", "openai".cyan());
+        println!("  {} - Set GOOGLE_CLOUD_PROJECT, authenticate with gcloud", "vertex".cyan());
+        println!("  {} - Set GOOGLE_API_KEY", "google".cyan());
+        println!("  {} - Set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT", "azure".cyan());
     }
     
     Ok(())

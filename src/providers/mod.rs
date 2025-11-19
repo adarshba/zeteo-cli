@@ -23,7 +23,6 @@ pub struct ChatResponse {
 #[async_trait::async_trait]
 pub trait AiProvider: Send + Sync {
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
-    #[allow(dead_code)]
     fn provider_name(&self) -> &str;
 }
 
@@ -33,9 +32,6 @@ pub mod google;
 pub mod azure;
 
 pub use openai::OpenAiProvider;
-#[allow(unused_imports)]
 pub use vertex::VertexProvider;
-#[allow(unused_imports)]
 pub use google::GoogleProvider;
-#[allow(unused_imports)]
 pub use azure::AzureProvider;
