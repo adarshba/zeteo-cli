@@ -2,6 +2,7 @@ use anyhow::Result;
 use colored::*;
 use dialoguer::{theme::ColorfulTheme, Input};
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::config::Config;
 use crate::logs::LogExplorer;
@@ -12,6 +13,7 @@ pub struct ReplSession {
     provider_name: String,
     conversation_history: Vec<Message>,
     log_explorer: Option<LogExplorer>,
+    session_start: Instant,
 }
 
 impl ReplSession {
@@ -21,6 +23,7 @@ impl ReplSession {
             provider_name,
             conversation_history: Vec::new(),
             log_explorer: None,
+            session_start: Instant::now(),
         }
     }
 
@@ -65,28 +68,95 @@ impl ReplSession {
     }
 
     fn print_welcome(&self) {
-        println!("\n{}", "╔═══════════════════════════════════════════════════════════╗".cyan());
-        println!("{}", "║           Welcome to Zeteo Interactive Shell             ║".cyan());
-        println!("{}", "╚═══════════════════════════════════════════════════════════╝".cyan());
+        // Clear screen for clean start
+        print!("\x1B[2J\x1B[1;1H");
+        
+        // Beautiful ASCII art banner
         println!();
-        println!("{} {}", "Provider:".bold(), self.provider_name.green());
+        println!("{}", "  ╔═══════════════════════════════════════════════════════════════╗".bright_cyan().bold());
+        println!("{}", "  ║                                                               ║".bright_cyan().bold());
+        println!("{}", "  ║   ███████╗███████╗████████╗███████╗ ██████╗                 ║".bright_blue().bold());
+        println!("{}", "  ║   ╚══███╔╝██╔════╝╚══██╔══╝██╔════╝██╔═══██╗                ║".bright_blue().bold());
+        println!("{}", "  ║     ███╔╝ █████╗     ██║   █████╗  ██║   ██║                ║".bright_blue().bold());
+        println!("{}", "  ║    ███╔╝  ██╔══╝     ██║   ██╔══╝  ██║   ██║                ║".bright_blue().bold());
+        println!("{}", "  ║   ███████╗███████╗   ██║   ███████╗╚██████╔╝                ║".bright_blue().bold());
+        println!("{}", "  ║   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ╚═════╝                 ║".bright_blue().bold());
+        println!("{}", "  ║                                                               ║".bright_cyan().bold());
+        println!("{}", "  ║        AI-Powered OTEL Log Explorer & Chat Assistant         ║".bright_cyan().bold());
+        println!("{}", "  ║                                                               ║".bright_cyan().bold());
+        println!("{}", "  ╚═══════════════════════════════════════════════════════════════╝".bright_cyan().bold());
         println!();
-        println!("{}", "Available commands:".bold());
-        println!("  {} - Exit the REPL", "/exit".cyan());
-        println!("  {} - Clear conversation history", "/clear".cyan());
-        println!("  {} - Show help", "/help".cyan());
-        println!("  {} - Search logs (e.g., /logs error)", "/logs".cyan());
-        println!("  {} - Switch provider (e.g., /provider openai)", "/provider".cyan());
-        println!("  {} - Export conversation to file (json or csv)", "/export".cyan());
-        println!("  {} - Show conversation history", "/history".cyan());
+        
+        // Provider info with icon
+        let provider_icon = match self.provider_name.to_lowercase().as_str() {
+            "openai" => "🤖",
+            "vertex" => "🔷",
+            "google" => "🔵",
+            "azure" => "☁️",
+            _ => "✨",
+        };
+        
+        println!("{} {} {}", 
+            "┌─ Provider:".bright_white().bold(),
+            provider_icon,
+            self.provider_name.bright_green().bold()
+        );
+        
+        if self.log_explorer.is_some() {
+            println!("{} {} {}", 
+                "└─ Log Explorer:".bright_white().bold(),
+                "✓".bright_green(),
+                "Connected".bright_green()
+            );
+        } else {
+            println!("{} {} {}", 
+                "└─ Log Explorer:".bright_white().bold(),
+                "✗".bright_red(),
+                "Not configured".dimmed()
+            );
+        }
         println!();
-        println!("{}", "Type your message and press Enter to chat.".dimmed());
-        println!("{}", "Press Ctrl+C or type /exit to quit.".dimmed());
+        
+        // Commands section with better formatting
+        println!("{}", "╭──────────── Available Commands ────────────╮".bright_yellow().bold());
+        println!("{}", "│                                            │".bright_yellow());
+        
+        let commands = vec![
+            ("/exit, /quit, /q", "Exit the REPL", "🚪"),
+            ("/clear", "Clear conversation history", "🗑️"),
+            ("/help, /h", "Show detailed help", "❓"),
+            ("/logs <query>", "Search OTEL logs", "🔍"),
+            ("/stats", "Show session statistics", "📊"),
+            ("/export [file]", "Export conversation", "💾"),
+            ("/history", "Show conversation history", "📜"),
+        ];
+        
+        for (cmd, desc, icon) in commands {
+            println!("│  {} {:<18} {} {}",
+                icon,
+                cmd.bright_cyan(),
+                "→".dimmed(),
+                desc.bright_white()
+            );
+        }
+        
+        println!("{}", "│                                            │".bright_yellow());
+        println!("{}", "╰────────────────────────────────────────────╯".bright_yellow().bold());
+        println!();
+        
+        println!("{}", "💡 Tip: Just type your message to start chatting!".bright_magenta().italic());
+        println!("{}", "   Press Ctrl+C or type /exit to quit.".dimmed());
+        println!();
+        println!("{}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_black());
         println!();
     }
 
     fn get_input(&self) -> Result<String> {
-        let prompt = format!("{}> ", "zeteo".cyan().bold());
+        let msg_count = self.conversation_history.len() / 2;
+        let prompt = format!("{} [{}]> ", 
+            "zeteo".bright_cyan().bold(),
+            msg_count.to_string().bright_black()
+        );
         
         Input::with_theme(&ColorfulTheme::default())
             .with_prompt(&prompt)
@@ -101,12 +171,14 @@ impl ReplSession {
 
         match cmd.as_str() {
             "/exit" | "/quit" | "/q" => {
-                println!("{}", "Exiting REPL...".yellow());
+                self.print_goodbye();
                 return Ok(true);
             }
             "/clear" => {
                 self.conversation_history.clear();
-                println!("{}", "Conversation history cleared.".green());
+                println!();
+                println!("{} {}", "✓".bright_green().bold(), "Conversation history cleared.".bright_green());
+                println!();
             }
             "/help" | "/h" => {
                 self.print_help();
@@ -116,16 +188,20 @@ impl ReplSession {
                     let query = parts[1..].join(" ");
                     self.handle_logs_command(&query).await?;
                 } else {
-                    println!("{}", "Usage: /logs <query>".yellow());
-                    println!("{}", "Example: /logs error".dimmed());
+                    println!();
+                    println!("{} {}", "⚠".bright_yellow(), "Usage: /logs <query>".yellow());
+                    println!("{} {}", "  Example:".dimmed(), "/logs error".bright_cyan());
+                    println!();
                 }
             }
             "/provider" => {
                 if parts.len() > 1 {
-                    println!("{}", "Provider switching not yet implemented in current session.".yellow());
-                    println!("{}", "Please restart zeteo with --provider flag.".dimmed());
+                    println!();
+                    println!("{} {}", "ℹ".bright_blue(), "Provider switching not yet implemented in current session.".yellow());
+                    println!("{} {}", "  Tip:".dimmed(), "Restart zeteo with --provider flag.".dimmed());
+                    println!();
                 } else {
-                    println!("{}", "Current provider: ".bold().to_string() + &self.provider_name.green().to_string());
+                    self.show_provider_info();
                 }
             }
             "/export" => {
@@ -135,9 +211,14 @@ impl ReplSession {
             "/history" => {
                 self.show_history();
             }
+            "/stats" => {
+                self.show_statistics();
+            }
             _ => {
-                println!("{} {}", "Unknown command:".red(), command);
-                println!("{}", "Type /help for available commands".dimmed());
+                println!();
+                println!("{} {} {}", "❌".red(), "Unknown command:".red().bold(), command.bright_red());
+                println!("{} {}", "  Tip:".dimmed(), "Type /help for available commands".dimmed());
+                println!();
             }
         }
 
@@ -159,13 +240,13 @@ impl ReplSession {
             max_tokens: Some(2000),
         };
 
-        // Show thinking indicator
-        print!("{}", "Thinking...".dimmed());
-        std::io::Write::flush(&mut std::io::stdout())?;
-        print!("\r");
+        // Show animated thinking indicator
+        let start_time = Instant::now();
+        self.show_thinking_indicator();
 
         // Get response from AI
         let response = self.provider.chat(request).await?;
+        let elapsed = start_time.elapsed();
 
         // Add assistant response to history
         let assistant_message = Message {
@@ -174,8 +255,13 @@ impl ReplSession {
         };
         self.conversation_history.push(assistant_message);
 
-        // Display response
-        println!("\n{}", response.content.green());
+        // Display response with formatting
+        println!();
+        println!("{}", "┌─ AI Response ─────────────────────────────────────".bright_green());
+        self.display_formatted_response(&response.content);
+        println!("{}", "└───────────────────────────────────────────────────".bright_green());
+        println!();
+        println!("{} {:.2}s", "⏱  Response time:".dimmed(), elapsed.as_secs_f64());
         println!();
 
         Ok(())
@@ -183,16 +269,22 @@ impl ReplSession {
 
     async fn handle_logs_command(&self, query: &str) -> Result<()> {
         if let Some(explorer) = &self.log_explorer {
-            println!("{}", format!("Searching logs for: '{}'", query).cyan());
+            println!();
+            println!("{} {}", "🔍 Searching logs for:".bright_cyan(), query.bright_yellow());
             let logs = explorer.search_logs(query, 20).await?;
             
             if logs.is_empty() {
-                println!("{}", "No logs found.".yellow());
+                println!();
+                println!("{} {}", "⚠".bright_yellow(), "No logs found.".yellow());
+                println!();
             } else {
                 explorer.display_logs(&logs);
             }
         } else {
-            println!("{}", "Log explorer not available. Please configure MCP server.".yellow());
+            println!();
+            println!("{} {}", "⚠".bright_yellow(), "Log explorer not available.".yellow());
+            println!("{} {}", "  Tip:".dimmed(), "Configure MCP server in config.json".dimmed());
+            println!();
         }
         Ok(())
     }
@@ -203,6 +295,7 @@ impl ReplSession {
 
         let filename = filename.unwrap_or("conversation.json");
         
+        println!();
         if filename.ends_with(".csv") {
             // Export as CSV
             let mut file = File::create(filename)?;
@@ -213,7 +306,7 @@ impl ReplSession {
                 writeln!(file, "{},{}", msg.role, content)?;
             }
             
-            println!("{}", format!("Conversation exported to: {}", filename).green());
+            println!("{} {} {}", "✓".bright_green().bold(), "Conversation exported to:".bright_green(), filename.bright_cyan());
         } else {
             // Export as JSON (default)
             let json_filename = if filename.ends_with(".json") {
@@ -225,49 +318,246 @@ impl ReplSession {
             let export_data = serde_json::json!({
                 "provider": self.provider_name,
                 "messages": self.conversation_history,
+                "message_count": self.conversation_history.len(),
                 "timestamp": chrono::Utc::now().to_rfc3339(),
+                "session_duration_seconds": self.session_start.elapsed().as_secs(),
             });
 
             let mut file = File::create(&json_filename)?;
             file.write_all(serde_json::to_string_pretty(&export_data)?.as_bytes())?;
             
-            println!("{}", format!("Conversation exported to: {}", json_filename).green());
+            println!("{} {} {}", "✓".bright_green().bold(), "Conversation exported to:".bright_green(), json_filename.bright_cyan());
         }
+        println!();
         
         Ok(())
     }
 
     fn show_history(&self) {
         if self.conversation_history.is_empty() {
-            println!("{}", "No conversation history yet.".yellow());
+            println!();
+            println!("{} {}", "ℹ".bright_blue(), "No conversation history yet.".yellow());
+            println!();
             return;
         }
 
-        println!("\n{}", "=== Conversation History ===".cyan().bold());
+        println!();
+        println!("{}", "╭────────── Conversation History ──────────╮".bright_cyan().bold());
+        println!("{}", "│                                          │".bright_cyan());
+        
         for (i, msg) in self.conversation_history.iter().enumerate() {
-            let role_display = match msg.role.as_str() {
-                "user" => "You".blue().bold(),
-                "assistant" => "AI".green().bold(),
-                _ => msg.role.as_str().normal(),
+            let (role_display, icon) = match msg.role.as_str() {
+                "user" => ("You".bright_blue().bold(), "👤"),
+                "assistant" => ("AI".bright_green().bold(), "🤖"),
+                _ => (msg.role.as_str().normal(), "•"),
             };
             
-            println!("\n[{}] {}: {}", i + 1, role_display, msg.content);
+            println!("│ {} [{}] {}:", icon, (i / 2) + 1, role_display);
+            
+            // Truncate long messages for history display
+            let content = if msg.content.len() > 60 {
+                format!("{}...", &msg.content[..60])
+            } else {
+                msg.content.clone()
+            };
+            
+            for line in content.lines().take(2) {
+                println!("│   {}", line.dimmed());
+            }
+            
+            if i < self.conversation_history.len() - 1 {
+                println!("{}", "│                                          │".bright_cyan());
+            }
         }
+        
+        println!("{}", "│                                          │".bright_cyan());
+        println!("{}", "╰──────────────────────────────────────────╯".bright_cyan().bold());
+        println!();
+        println!("{} {}", "💡 Tip:".bright_magenta(), "Use /export to save full conversation".dimmed());
         println!();
     }
 
     fn print_help(&self) {
-        println!("\n{}", "=== Zeteo REPL Commands ===".cyan().bold());
         println!();
-        println!("{:<20} {}", "/exit, /quit, /q".cyan(), "Exit the REPL");
-        println!("{:<20} {}", "/clear".cyan(), "Clear conversation history");
-        println!("{:<20} {}", "/help, /h".cyan(), "Show this help message");
-        println!("{:<20} {}", "/logs <query>".cyan(), "Search OTEL logs");
-        println!("{:<20} {}", "/provider [name]".cyan(), "Show or switch AI provider");
-        println!("{:<20} Export conversation (json or csv, e.g., /export chat.csv)", "/export [filename]".cyan());
-        println!("{:<20} Show conversation history", "/history".cyan());
+        println!("{}", "╔══════════════════════════════════════════════════════════════╗".bright_cyan().bold());
+        println!("{}", "║                  Zeteo REPL Commands                         ║".bright_cyan().bold());
+        println!("{}", "╚══════════════════════════════════════════════════════════════╝".bright_cyan().bold());
         println!();
-        println!("{}", "Just type your message to chat with AI.".dimmed());
+        
+        let commands = vec![
+            ("🚪", "/exit, /quit, /q", "Exit the REPL and end session"),
+            ("🗑️", "/clear", "Clear conversation history to start fresh"),
+            ("❓", "/help, /h", "Show this detailed help message"),
+            ("🔍", "/logs <query>", "Search OTEL logs (e.g., /logs error)"),
+            ("🔄", "/provider", "Show current AI provider info"),
+            ("📊", "/stats", "Display session statistics"),
+            ("💾", "/export [file]", "Export conversation (json/csv)"),
+            ("📜", "/history", "Show conversation history summary"),
+        ];
+        
+        for (icon, cmd, desc) in commands {
+            println!("  {} {:<20} {}", 
+                icon,
+                cmd.bright_cyan().bold(),
+                desc.bright_white()
+            );
+        }
+        
+        println!();
+        println!("{}", "╭──────────────────────────────────────────────────────────────╮".bright_yellow());
+        println!("{}", "│  💡 Tips & Tricks                                            │".bright_yellow());
+        println!("{}", "├──────────────────────────────────────────────────────────────┤".bright_yellow());
+        println!("{}", "│  • Just type your message to chat with AI                   │".bright_white());
+        println!("{}", "│  • Use multi-line input with Shift+Enter (if supported)     │".bright_white());
+        println!("{}", "│  • Export conversations for sharing with your team          │".bright_white());
+        println!("{}", "│  • Check /stats to see your session activity                │".bright_white());
+        println!("{}", "╰──────────────────────────────────────────────────────────────╯".bright_yellow());
+        println!();
+    }
+    
+    fn show_provider_info(&self) {
+        println!();
+        println!("{}", "╭──────── Provider Information ────────╮".bright_cyan().bold());
+        println!("{}", "│                                      │".bright_cyan());
+        
+        let provider_icon = match self.provider_name.to_lowercase().as_str() {
+            "openai" => "🤖",
+            "vertex" => "🔷",
+            "google" => "🔵",
+            "azure" => "☁️",
+            _ => "✨",
+        };
+        
+        println!("│  {} Name: {:<24} │", 
+            provider_icon,
+            self.provider_name.bright_green().bold()
+        );
+        
+        let model_info = match self.provider_name.to_lowercase().as_str() {
+            "openai" => "GPT-4o / GPT-4",
+            "vertex" => "Gemini Pro (GCP)",
+            "google" => "Gemini Pro",
+            "azure" => "Azure OpenAI",
+            _ => "Unknown",
+        };
+        
+        println!("│  📋 Model: {:<24} │", model_info.bright_white());
+        println!("{}", "│                                      │".bright_cyan());
+        println!("{}", "╰──────────────────────────────────────╯".bright_cyan().bold());
+        println!();
+    }
+    
+    fn show_statistics(&self) {
+        let duration = self.session_start.elapsed();
+        let hours = duration.as_secs() / 3600;
+        let minutes = (duration.as_secs() % 3600) / 60;
+        let seconds = duration.as_secs() % 60;
+        
+        let message_pairs = self.conversation_history.len() / 2;
+        
+        println!();
+        println!("{}", "╔══════════════════════════════════════════════════╗".bright_magenta().bold());
+        println!("{}", "║          Session Statistics                      ║".bright_magenta().bold());
+        println!("{}", "╚══════════════════════════════════════════════════╝".bright_magenta().bold());
+        println!();
+        
+        println!("  {} {:<30} {}", 
+            "💬".bright_cyan(),
+            "Total messages exchanged:",
+            format!("{}", message_pairs).bright_yellow().bold()
+        );
+        
+        println!("  {} {:<30} {}", 
+            "📝".bright_cyan(),
+            "Messages in history:",
+            format!("{}", self.conversation_history.len()).bright_yellow().bold()
+        );
+        
+        println!("  {} {:<30} {}", 
+            "⏱".bright_cyan(),
+            "Session duration:",
+            format!("{}h {}m {}s", hours, minutes, seconds).bright_yellow().bold()
+        );
+        
+        println!("  {} {:<30} {}", 
+            "🤖".bright_cyan(),
+            "AI Provider:",
+            self.provider_name.bright_green().bold()
+        );
+        
+        if self.log_explorer.is_some() {
+            println!("  {} {:<30} {}", 
+                "🔍".bright_cyan(),
+                "Log Explorer:",
+                "Connected ✓".bright_green().bold()
+            );
+        }
+        
+        println!();
+        
+        if message_pairs > 0 {
+            let avg_time_per_msg = duration.as_secs() as f64 / message_pairs as f64;
+            println!("  {} {:.1}s", 
+                "📊 Average time per exchange:".dimmed(),
+                avg_time_per_msg
+            );
+            println!();
+        }
+    }
+    
+    fn show_thinking_indicator(&self) {
+        print!("{} ", "💭 Thinking...".bright_magenta().bold());
+        std::io::Write::flush(&mut std::io::stdout()).ok();
+        print!("\r");
+    }
+    
+    fn display_formatted_response(&self, content: &str) {
+        // Simple formatting with color coding
+        for line in content.lines() {
+            if line.trim().starts_with("```") {
+                // Code block delimiter
+                println!("{}", line.bright_black());
+            } else if line.trim().starts_with('#') {
+                // Heading
+                println!("{}", line.bright_yellow().bold());
+            } else if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
+                // List item
+                println!("  {}", line.bright_cyan());
+            } else if line.trim().starts_with(&['1', '2', '3', '4', '5', '6', '7', '8', '9'][..]) 
+                && line.contains(". ") {
+                // Numbered list
+                println!("  {}", line.bright_cyan());
+            } else {
+                // Regular text
+                println!("{}", line.bright_white());
+            }
+        }
+    }
+    
+    fn print_goodbye(&self) {
+        let duration = self.session_start.elapsed();
+        let minutes = duration.as_secs() / 60;
+        let message_pairs = self.conversation_history.len() / 2;
+        
+        println!();
+        println!("{}", "╔═══════════════════════════════════════════════════════════╗".bright_cyan().bold());
+        println!("{}", "║                 Thank You for Using Zeteo!               ║".bright_cyan().bold());
+        println!("{}", "╚═══════════════════════════════════════════════════════════╝".bright_cyan().bold());
+        println!();
+        
+        println!("{}", "📊 Session Summary:".bright_magenta().bold());
+        println!("   {} messages exchanged in {} minutes", 
+            message_pairs.to_string().bright_yellow(),
+            minutes.to_string().bright_yellow()
+        );
+        
+        if message_pairs > 0 && !self.conversation_history.is_empty() {
+            println!();
+            println!("{} {}", "💡 Tip:".bright_blue(), "Don't forget to export your conversation with /export".dimmed());
+        }
+        
+        println!();
+        println!("{}", "👋 Goodbye!".bright_green().bold());
         println!();
     }
 }
