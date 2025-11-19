@@ -4,11 +4,13 @@ use clap_complete::{generate, Shell};
 use colored::*;
 use std::io;
 
+mod cache;
 mod config;
 mod logs;
 mod mcp;
 mod providers;
 mod repl;
+mod retry;
 
 use config::Config;
 use logs::LogExplorer;
@@ -59,6 +61,22 @@ enum Commands {
         /// Stream results in real-time
         #[arg(short, long)]
         stream: bool,
+
+        /// Filter by log level (ERROR, WARN, INFO, DEBUG)
+        #[arg(long)]
+        level: Option<String>,
+
+        /// Filter by service name
+        #[arg(long)]
+        service: Option<String>,
+
+        /// Show aggregated statistics
+        #[arg(long)]
+        aggregate: bool,
+
+        /// Export to file (json or csv)
+        #[arg(long)]
+        export: Option<String>,
     },
     
     /// Chat with AI about logs or general questions
@@ -133,8 +151,8 @@ async fn run_command(command: Option<Commands>, output_format: OutputFormat, pro
     }
 
     match command.unwrap() {
-        Commands::Logs { query, max, interactive, stream } => {
-            handle_logs(query, max, interactive, stream, output_format).await?;
+        Commands::Logs { query, max, interactive, stream, level, service, aggregate, export } => {
+            handle_logs(query, max, interactive, stream, level, service, aggregate, export, output_format).await?;
         }
         Commands::Chat { provider, message, stream } => {
             handle_chat(provider, message, stream, output_format).await?;
@@ -163,6 +181,10 @@ async fn handle_logs(
     max: usize,
     interactive: bool,
     stream: bool,
+    level: Option<String>,
+    service: Option<String>,
+    aggregate: bool,
+    export: Option<String>,
     output_format: OutputFormat,
 ) -> Result<()> {
     let _config = Config::load()?;
@@ -172,24 +194,65 @@ async fn handle_logs(
     
     if interactive {
         explorer.interactive_mode().await?;
+    } else if stream {
+        println!("{}", "Streaming mode enabled...".cyan());
+        let query_str = query.as_deref().unwrap_or("");
+        
+        explorer.stream_logs(query_str, |_log| {
+            // Return true to continue streaming
+            true
+        }).await?;
     } else if let Some(q) = query {
-        let logs = if stream {
-            println!("{}", "Streaming mode enabled...".cyan());
-            explorer.search_logs(&q, max).await?
+        let logs = if level.is_some() || service.is_some() {
+            let filter = logs::LogFilter {
+                level,
+                service,
+                start_time: None,
+                end_time: None,
+                contains: None,
+            };
+            explorer.search_logs_with_filter(&q, max, &filter).await?
         } else {
             explorer.search_logs(&q, max).await?
         };
 
-        match output_format {
-            OutputFormat::Text => explorer.display_logs(&logs),
-            OutputFormat::Json => {
-                let json = serde_json::to_string_pretty(&logs)?;
-                println!("{}", json);
+        if aggregate {
+            let agg = explorer.aggregate_logs(&logs);
+            explorer.display_aggregation(&agg);
+        }
+
+        if let Some(export_path) = export {
+            if export_path.ends_with(".csv") {
+                explorer.export_logs_csv(&logs, &export_path)?;
+            } else {
+                // Default to JSON
+                let json_path = if export_path.ends_with(".json") {
+                    export_path
+                } else {
+                    format!("{}.json", export_path)
+                };
+                explorer.export_logs_json(&logs, &json_path)?;
+            }
+        } else {
+            match output_format {
+                OutputFormat::Text => explorer.display_logs(&logs),
+                OutputFormat::Json => {
+                    let json = serde_json::to_string_pretty(&logs)?;
+                    println!("{}", json);
+                }
             }
         }
     } else {
         println!("{}", "Please provide a query with --query or use --interactive mode".yellow());
         println!("{}", "Example: zeteo logs --query \"error\" --max 10".dimmed());
+        println!();
+        println!("{}", "Advanced examples:".bold());
+        println!("  {} - Filter by log level", "zeteo logs --query \"error\" --level ERROR".dimmed());
+        println!("  {} - Filter by service", "zeteo logs --query \"*\" --service \"api\"".dimmed());
+        println!("  {} - Show statistics", "zeteo logs --query \"error\" --aggregate".dimmed());
+        println!("  {} - Export to JSON", "zeteo logs --query \"error\" --export logs.json".dimmed());
+        println!("  {} - Export to CSV", "zeteo logs --query \"error\" --export logs.csv".dimmed());
+        println!("  {} - Stream logs in real-time", "zeteo logs --query \"*\" --stream".dimmed());
     }
     
     Ok(())

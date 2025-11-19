@@ -177,17 +177,21 @@ zeteo completions bash > ~/.bash_completion.d/zeteo
 - [x] Configuration management
 - [x] Log exploration UI
 - [x] Multi-provider support
+- [x] **Interactive REPL mode** (NEW!)
+- [x] **Conversation history in REPL** (NEW!)
+- [x] **Real-time log streaming** (NEW!)
+- [x] **Advanced log filtering** (NEW!)
+- [x] **Log aggregation and statistics** (NEW!)
+- [x] **Export logs to CSV/JSON** (NEW!)
+- [x] **Export conversations to CSV/JSON** (NEW!)
+- [x] **Response caching system** (NEW!)
+- [x] **Retry logic with exponential backoff** (NEW!)
 
 ### 🚧 Remaining (Future Enhancements)
-- [ ] Real-time log streaming implementation
-- [ ] Advanced filtering and aggregation
-- [ ] Export functionality (CSV, JSON files)
-- [ ] Interactive TUI mode (terminal UI)
-- [ ] Response caching
-- [ ] Retry logic with exponential backoff
+- [ ] Interactive TUI mode with full terminal UI (ncurses-style)
 - [ ] Full MCP client communication (currently placeholder)
 - [ ] Structured logging with tracing
-- [ ] Conversation history/checkpointing
+- [ ] Conversation history/checkpointing to disk
 - [ ] File operations tool
 - [ ] Shell command execution tool
 - [ ] Web fetching tool

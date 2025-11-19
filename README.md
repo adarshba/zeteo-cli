@@ -179,6 +179,57 @@ cargo test
 cargo clippy
 ```
 
+## Interactive REPL Mode
+
+Zeteo now features an interactive REPL (Read-Eval-Print Loop) shell, similar to gemini-cli, for continuous conversational interaction:
+
+```bash
+# Start interactive mode (default when no command specified)
+zeteo
+
+# Or specify a provider
+zeteo --provider google
+zeteo --provider vertex
+```
+
+### REPL Features
+
+- **Continuous conversation**: Maintains context across multiple messages
+- **Special commands**:
+  - `/exit`, `/quit`, `/q` - Exit the REPL
+  - `/clear` - Clear conversation history
+  - `/help` - Show available commands
+  - `/logs <query>` - Search logs within REPL
+  - `/provider` - Show current provider
+  - `/export [filename]` - Export conversation to JSON or CSV
+  - `/history` - Show conversation history
+- **Auto-save**: Export your conversations for later review
+- **Multi-provider support**: Switch between AI providers
+
+Example session:
+```bash
+$ export OPENAI_API_KEY="your-key"
+$ zeteo
+╔═══════════════════════════════════════════════════════════╗
+║           Welcome to Zeteo Interactive Shell             ║
+╚═══════════════════════════════════════════════════════════╝
+
+Provider: openai
+
+zeteo> What is OpenTelemetry?
+
+[AI response here...]
+
+zeteo> How do I trace errors?
+
+[AI response with context from previous question...]
+
+zeteo> /export my-conversation.json
+Conversation exported to: my-conversation.json
+
+zeteo> /exit
+```
+
 ## Roadmap
 
 - [x] Basic CLI structure
@@ -190,12 +241,63 @@ cargo clippy
 - [x] Shell completions (bash, zsh, fish, powershell)
 - [x] JSON output format for scripting
 - [x] Graceful shutdown handling
-- [ ] Real-time log streaming
-- [ ] Advanced filtering and aggregation
-- [ ] Export functionality (CSV, JSON files)
-- [ ] Interactive TUI mode
-- [ ] Response caching for better performance
-- [ ] Retry logic with exponential backoff
+- [x] **Interactive REPL mode** (NEW!)
+- [x] **Real-time log streaming** (NEW!)
+- [x] **Advanced filtering and aggregation** (NEW!)
+- [x] **Export functionality (CSV, JSON files)** (NEW!)
+- [x] **Response caching for better performance** (NEW!)
+- [x] **Retry logic with exponential backoff** (NEW!)
+- [ ] Interactive TUI mode with full terminal UI
+- [ ] Full MCP client implementation
+
+## Advanced Features
+
+### Log Filtering and Aggregation
+
+```bash
+# Filter by log level
+zeteo logs --query "error" --level ERROR
+
+# Filter by service
+zeteo logs --query "*" --service "api-gateway"
+
+# Show aggregated statistics
+zeteo logs --query "error" --aggregate
+
+# Combine filters
+zeteo logs --query "database" --level WARN --service "backend" --aggregate
+```
+
+### Export Logs
+
+```bash
+# Export to JSON
+zeteo logs --query "error" --export logs.json
+
+# Export to CSV
+zeteo logs --query "error" --export logs.csv
+```
+
+### Real-time Log Streaming
+
+```bash
+# Stream logs in real-time
+zeteo logs --query "*" --stream
+
+# Stream with filters
+zeteo logs --query "error" --level ERROR --stream
+```
+
+### Conversation Export
+
+Within REPL mode:
+```bash
+# Export as JSON (default)
+zeteo> /export my-chat.json
+
+# Export as CSV
+zeteo> /export my-chat.csv
+```
 
 ## Contributing
 

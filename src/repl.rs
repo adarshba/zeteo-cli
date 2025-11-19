@@ -77,7 +77,7 @@ impl ReplSession {
         println!("  {} - Show help", "/help".cyan());
         println!("  {} - Search logs (e.g., /logs error)", "/logs".cyan());
         println!("  {} - Switch provider (e.g., /provider openai)", "/provider".cyan());
-        println!("  {} - Export conversation to file", "/export".cyan());
+        println!("  {} - Export conversation to file (json or csv)", "/export".cyan());
         println!("  {} - Show conversation history", "/history".cyan());
         println!();
         println!("{}", "Type your message and press Enter to chat.".dimmed());
@@ -129,7 +129,8 @@ impl ReplSession {
                 }
             }
             "/export" => {
-                self.export_conversation(parts.get(1).copied())?;
+                let filename = parts.get(1).copied();
+                self.export_conversation(filename)?;
             }
             "/history" => {
                 self.show_history();
@@ -202,16 +203,36 @@ impl ReplSession {
 
         let filename = filename.unwrap_or("conversation.json");
         
-        let export_data = serde_json::json!({
-            "provider": self.provider_name,
-            "messages": self.conversation_history,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        });
+        if filename.ends_with(".csv") {
+            // Export as CSV
+            let mut file = File::create(filename)?;
+            writeln!(file, "role,content")?;
+            
+            for msg in &self.conversation_history {
+                let content = msg.content.replace(",", ";").replace("\n", " ");
+                writeln!(file, "{},{}", msg.role, content)?;
+            }
+            
+            println!("{}", format!("Conversation exported to: {}", filename).green());
+        } else {
+            // Export as JSON (default)
+            let json_filename = if filename.ends_with(".json") {
+                filename.to_string()
+            } else {
+                format!("{}.json", filename)
+            };
+            
+            let export_data = serde_json::json!({
+                "provider": self.provider_name,
+                "messages": self.conversation_history,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
 
-        let mut file = File::create(filename)?;
-        file.write_all(serde_json::to_string_pretty(&export_data)?.as_bytes())?;
-        
-        println!("{}", format!("Conversation exported to: {}", filename).green());
+            let mut file = File::create(&json_filename)?;
+            file.write_all(serde_json::to_string_pretty(&export_data)?.as_bytes())?;
+            
+            println!("{}", format!("Conversation exported to: {}", json_filename).green());
+        }
         
         Ok(())
     }
@@ -243,7 +264,7 @@ impl ReplSession {
         println!("{:<20} {}", "/help, /h".cyan(), "Show this help message");
         println!("{:<20} {}", "/logs <query>".cyan(), "Search OTEL logs");
         println!("{:<20} {}", "/provider [name]".cyan(), "Show or switch AI provider");
-        println!("{:<20} {}", "/export [filename]".cyan(), "Export conversation (default: conversation.json)");
+        println!("{:<20} {}", "/export [filename]".cyan(), "Export conversation (json or csv, e.g., /export chat.csv)");
         println!("{:<20} {}", "/history".cyan(), "Show conversation history");
         println!();
         println!("{}", "Just type your message to chat with AI.".dimmed());
