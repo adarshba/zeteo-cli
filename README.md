@@ -179,9 +179,9 @@ cargo test
 cargo clippy
 ```
 
-## Interactive REPL Mode
+## 🎨 Enhanced Interactive REPL Mode
 
-Zeteo now features an interactive REPL (Read-Eval-Print Loop) shell, similar to gemini-cli, for continuous conversational interaction:
+Zeteo features a beautifully redesigned interactive REPL (Read-Eval-Print Loop) shell with a focus on visual appeal and user experience. The REPL is the main product of Zeteo, offering continuous conversational interaction with AI while exploring OTEL logs.
 
 ```bash
 # Start interactive mode (default when no command specified)
@@ -190,45 +190,97 @@ zeteo
 # Or specify a provider
 zeteo --provider google
 zeteo --provider vertex
+zeteo --provider azure
 ```
 
-### REPL Features
+### ✨ Visual Enhancements
 
-- **Continuous conversation**: Maintains context across multiple messages
-- **Special commands**:
-  - `/exit`, `/quit`, `/q` - Exit the REPL
-  - `/clear` - Clear conversation history
-  - `/help` - Show available commands
-  - `/logs <query>` - Search logs within REPL
-  - `/provider` - Show current provider
-  - `/export [filename]` - Export conversation to JSON or CSV
-  - `/history` - Show conversation history
-- **Auto-save**: Export your conversations for later review
-- **Multi-provider support**: Switch between AI providers
+- **🎨 Beautiful ASCII Art Banner**: Eye-catching ZETEO logo on startup
+- **🤖 Provider Icons**: Emoji indicators (🤖 OpenAI, 🔷 Vertex, 🔵 Google, ☁️ Azure)
+- **🌈 Rich Color Scheme**: Intelligent color coding for different output types
+- **📊 Professional Layout**: Clean borders, dividers, and formatting
+- **🔢 Message Counter**: Track conversation depth in the prompt
 
-Example session:
+### 🚀 Key Features
+
+- **💬 Continuous conversation**: Maintains context across multiple messages
+- **📊 Session Statistics**: Track messages, duration, and performance with `/stats`
+- **⏱️ Response Timing**: See how long each AI response takes
+- **🎯 Smart Indicators**: Visual feedback with ✓, ⚠, ❌, and ℹ icons
+- **💾 Export Conversations**: Save to JSON or CSV with `/export`
+- **📜 History Management**: View conversation history with `/history`
+- **🔍 Log Integration**: Search OTEL logs directly with `/logs`
+
+### 📋 REPL Commands
+
+- `/exit`, `/quit`, `/q` 🚪 - Exit with session summary
+- `/clear` 🗑️ - Clear conversation history
+- `/help` ❓ - Show detailed help
+- `/stats` 📊 - Show session statistics (NEW!)
+- `/logs <query>` 🔍 - Search OTEL logs
+- `/provider` 🔄 - Show provider info (ENHANCED!)
+- `/export [file]` 💾 - Export conversation (ENHANCED!)
+- `/history` 📜 - Show conversation history (ENHANCED!)
+
+### 🎬 Example Session
+
 ```bash
 $ export OPENAI_API_KEY="your-key"
 $ zeteo
+
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║   ███████╗███████╗████████╗███████╗ ██████╗                 ║
+  ║   ╚══███╔╝██╔════╝╚══██╔══╝██╔════╝██╔═══██╗                ║
+  ║     ███╔╝ █████╗     ║   █████╗  ██║   ██║                ║
+  ║    ███╔╝  ██╔══╝     ██║   ██╔══╝  ██║   ██║                ║
+  ║   ███████╗███████╗   ██║   ███████╗╚██████╔╝                ║
+  ║   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ╚═════╝                 ║
+  ║        AI-Powered OTEL Log Explorer & Chat Assistant         ║
+  ╚═══════════════════════════════════════════════════════════════╝
+
+┌─ Provider: 🤖 openai
+└─ Log Explorer: ✓ Connected
+
+💡 Tip: Just type your message to start chatting!
+
+zeteo [0]> What is OpenTelemetry?
+
+💭 Thinking...
+
+┌─ AI Response ─────────────────────────────────────
+OpenTelemetry is an observability framework...
+└───────────────────────────────────────────────────
+
+⏱  Response time: 1.23s
+
+zeteo [1]> /stats
+
+╔══════════════════════════════════════════════════╗
+║          Session Statistics                      ║
+╚══════════════════════════════════════════════════╝
+
+  💬 Total messages exchanged:     1
+  📝 Messages in history:          2
+  ⏱  Session duration:             0h 1m 5s
+  🤖 AI Provider:                  openai
+  🔍 Log Explorer:                 Connected ✓
+
+zeteo [1]> /export my-conversation.json
+
+✓ Conversation exported to: my-conversation.json
+
+zeteo [1]> /exit
+
 ╔═══════════════════════════════════════════════════════════╗
-║           Welcome to Zeteo Interactive Shell             ║
+║                 Thank You for Using Zeteo!               ║
 ╚═══════════════════════════════════════════════════════════╝
 
-Provider: openai
-
-zeteo> What is OpenTelemetry?
-
-[AI response here...]
-
-zeteo> How do I trace errors?
-
-[AI response with context from previous question...]
-
-zeteo> /export my-conversation.json
-Conversation exported to: my-conversation.json
-
-zeteo> /exit
+📊 Session Summary: 1 messages exchanged in 1 minutes
+👋 Goodbye!
 ```
+
+See [examples/REPL_GUIDE.md](examples/REPL_GUIDE.md) for more detailed examples and tips.
+
 
 ## Roadmap
 
@@ -241,14 +293,20 @@ zeteo> /exit
 - [x] Shell completions (bash, zsh, fish, powershell)
 - [x] JSON output format for scripting
 - [x] Graceful shutdown handling
-- [x] **Interactive REPL mode** (NEW!)
-- [x] **Real-time log streaming** (NEW!)
-- [x] **Advanced filtering and aggregation** (NEW!)
-- [x] **Export functionality (CSV, JSON files)** (NEW!)
-- [x] **Response caching for better performance** (NEW!)
-- [x] **Retry logic with exponential backoff** (NEW!)
+- [x] **Interactive REPL mode** ✨
+- [x] **Enhanced REPL UI with beautiful colors and formatting** 🎨 (NEW!)
+- [x] **Session statistics and tracking** 📊 (NEW!)
+- [x] **Response time monitoring** ⏱️ (NEW!)
+- [x] **Improved command help and documentation** 📚 (NEW!)
+- [x] **Real-time log streaming**
+- [x] **Advanced filtering and aggregation**
+- [x] **Export functionality (CSV, JSON files)**
+- [x] **Response caching for better performance**
+- [x] **Retry logic with exponential backoff**
 - [ ] Interactive TUI mode with full terminal UI
 - [ ] Full MCP client implementation
+
+**Note**: The REPL mode is now the flagship feature with a complete visual overhaul and stabilization!
 
 ## Advanced Features
 
