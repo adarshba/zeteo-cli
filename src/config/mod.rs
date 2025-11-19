@@ -54,7 +54,7 @@ impl Config {
         Ok(())
     }
     
-    fn config_path() -> Result<PathBuf> {
+    pub fn config_path() -> Result<PathBuf> {
         let config_dir = dirs::config_dir()
             .context("Could not determine config directory")?;
         Ok(config_dir.join("zeteo-cli").join("config.json"))
