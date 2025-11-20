@@ -178,7 +178,10 @@ fn test_config_serialization() {
         },
     );
     
-    let config = zeteo_cli::config::Config { servers };
+    let config = zeteo_cli::config::Config { 
+        servers,
+        backends: std::collections::HashMap::new(),
+    };
     let json = serde_json::to_string(&config).unwrap();
     
     assert!(json.contains("\"test-server\""));
