@@ -192,15 +192,39 @@ impl McpClient {
             stdin.flush()?;
         }
         
-        // Read response from stdout with timeout
+        // Read response from stdout, skipping non-JSON lines
         let response_line = {
             let mut stdout = self.stdout.lock().unwrap();
             let mut line = String::new();
+            let mut attempts = 0;
+            const MAX_ATTEMPTS: usize = 10;
             
-            // Simple timeout mechanism - try to read with a reasonable timeout
-            // In production, you might want to use tokio or async channels
-            stdout.read_line(&mut line)
-                .context("Failed to read response from MCP server")?;
+            // Try to read a valid JSON line, skipping non-JSON output
+            loop {
+                line.clear();
+                stdout.read_line(&mut line)
+                    .context("Failed to read response from MCP server")?;
+                
+                if line.trim().is_empty() {
+                    attempts += 1;
+                    if attempts >= MAX_ATTEMPTS {
+                        return Err(anyhow!("No response from MCP server after {} attempts", MAX_ATTEMPTS));
+                    }
+                    continue;
+                }
+                
+                // Try to parse as JSON - if it succeeds, we have our response
+                if line.trim().starts_with('{') {
+                    break;
+                }
+                
+                // Otherwise, it's probably a log line from the server - skip it
+                eprintln!("MCP server output: {}", line.trim());
+                attempts += 1;
+                if attempts >= MAX_ATTEMPTS {
+                    return Err(anyhow!("No valid JSON response from MCP server after {} lines", MAX_ATTEMPTS));
+                }
+            }
             
             line
         };

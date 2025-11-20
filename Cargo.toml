@@ -9,6 +9,10 @@ repository = "https://github.com/adarshba/zeteo-cli"
 keywords = ["cli", "ai", "otel", "logs", "gemini"]
 categories = ["command-line-utilities"]
 
+[lib]
+name = "zeteo_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "zeteo"
 path = "src/main.rs"
