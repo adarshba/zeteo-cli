@@ -4,10 +4,23 @@ A Rust-based CLI AI agent with OTEL log exploration capabilities. Zeteo (from Gr
 
 ## Features
 
-- 🔍 **Log Explorer**: Search and explore OTEL-based logs from OpenObserve, Kibana, and Elasticsearch
+- 🔍 **Multi-Backend Log Explorer**: Search and explore OTEL-based logs from:
+  - **Elasticsearch** - Via MCP server or direct connection
+  - **OpenObserve** - Cloud-native observability platform
+  - **Kibana** - Visual log exploration with KQL support
 - 🤖 **AI Integration**: Chat with multiple AI providers (OpenAI, Vertex AI, Google AI, Azure OpenAI)
 - 📊 **MCP Server Support**: Integrated with otel-mcp-server for seamless log queries
 - 🎨 **Beautiful CLI**: Colored output with interactive modes
+- 🔌 **Flexible Backends**: Choose between MCP or direct backend connections
+
+## Reference Implementation
+
+This implementation is inspired by the [KIBANA_SERVER](https://github.com/gaharivatsa/KIBANA_SERVER) project, which demonstrates how to handle multiple observability backends (Kibana, OpenObserve, Periscope) through a unified API. Zeteo extends this concept by providing:
+
+- Native Rust implementations for performance
+- Direct backend client integrations
+- AI-powered log analysis
+- Interactive REPL and TUI modes
 
 ## Installation
 
@@ -64,6 +77,83 @@ On first run, Zeteo creates a configuration file at `~/.config/zeteo-cli/config.
   }
 }
 ```
+
+### Log Backend Configuration
+
+Zeteo supports multiple log backends for querying telemetry data. You can configure different backends in `~/.config/zeteo-cli/config.json`:
+
+#### Elasticsearch
+
+```json
+{
+  "backends": {
+    "elasticsearch": {
+      "type": "elasticsearch",
+      "url": "http://localhost:9200",
+      "username": "elastic",
+      "password": "changeme",
+      "index_pattern": "logs-*",
+      "verify_ssl": false
+    }
+  }
+}
+```
+
+#### OpenObserve
+
+OpenObserve is a cloud-native observability platform. Configure it with:
+
+```json
+{
+  "backends": {
+    "openobserve": {
+      "type": "openobserve",
+      "url": "http://localhost:5080",
+      "username": "admin@example.com",
+      "password": "changeme",
+      "organization": "default",
+      "stream": "default",
+      "verify_ssl": false
+    }
+  }
+}
+```
+
+**Getting Started with OpenObserve:**
+1. Download and run OpenObserve from [openobserve.ai](https://openobserve.ai/)
+2. Create an organization and stream for your logs
+3. Update the configuration with your credentials
+4. Use `zeteo logs --backend openobserve --query "error"` to query logs
+
+#### Kibana
+
+Query logs through Kibana's interface:
+
+```json
+{
+  "backends": {
+    "kibana": {
+      "type": "kibana",
+      "url": "http://localhost:5601",
+      "auth_token": null,
+      "index_pattern": "logs-*",
+      "verify_ssl": false,
+      "version": "7.10.2"
+    }
+  }
+}
+```
+
+**Kibana Authentication:**
+To get your Kibana auth token:
+1. Log in to Kibana in your browser
+2. Open developer tools (F12)
+3. Go to Application → Cookies
+4. Find the authentication cookie (JWT token)
+5. Copy the complete value and add it to the config:
+   ```json
+   "auth_token": "your-jwt-token-here"
+   ```
 
 ### Environment Variables
 
@@ -128,6 +218,10 @@ zeteo-cli config --show
 
 ### Log Exploration
 
+Zeteo supports multiple log backends for exploring telemetry data.
+
+#### Using Elasticsearch (via MCP Server)
+
 Search logs with a query:
 ```bash
 zeteo-cli logs --query "error" --max 50
@@ -142,6 +236,42 @@ JSON output for scripting:
 ```bash
 zeteo logs --query "error" --output json | jq '.[] | select(.level=="ERROR")'
 ```
+
+#### Using OpenObserve Backend
+
+Query logs directly from OpenObserve:
+```bash
+# Basic query
+zeteo logs --backend openobserve --query "error" --max 50
+
+# Filter by level
+zeteo logs --backend openobserve --query "*" --level ERROR --max 100
+
+# Filter by service
+zeteo logs --backend openobserve --query "payment" --service api-gateway --max 50
+```
+
+#### Using Kibana Backend
+
+Query logs through Kibana's KQL interface:
+```bash
+# Basic KQL query
+zeteo logs --backend kibana --query "error OR exception" --max 50
+
+# Query specific fields
+zeteo logs --backend kibana --query "level:ERROR AND service.name:payments" --max 100
+
+# Time-based queries
+zeteo logs --backend kibana --query "error" --start-time "2024-01-01T00:00:00Z" --end-time "2024-01-02T00:00:00Z"
+```
+
+#### Backend Comparison
+
+| Backend | Query Language | Best For | Authentication |
+|---------|---------------|----------|----------------|
+| **Elasticsearch** | MCP/Lucene | Standard ELK stack | Basic Auth |
+| **OpenObserve** | SQL | Cloud-native observability | Basic Auth |
+| **Kibana** | KQL | Visual exploration | JWT Token |
 
 ### AI Chat
 
@@ -499,11 +629,15 @@ Zeteo now features a **full MCP (Model Context Protocol) client implementation**
 
 Zeteo integrates with the [otel-mcp-server](https://www.npmjs.com/package/otel-mcp-server) to query OpenTelemetry logs from various backends:
 
-- **Elasticsearch** - Query logs from Elasticsearch clusters
-- **OpenObserve** - Integration with OpenObserve platform
-- **Kibana** - Access logs through Kibana interface
+- **Elasticsearch** - Query logs from Elasticsearch clusters via MCP or direct connection
+- **OpenObserve** - Direct integration with OpenObserve platform using SQL queries
+- **Kibana** - Access logs through Kibana interface using KQL (Kibana Query Language)
 
-### How It Works
+### Backend Implementations
+
+Zeteo provides two ways to query logs:
+
+#### 1. MCP Server (Elasticsearch/OpenSearch)
 
 The MCP client:
 1. Spawns the otel-mcp-server process with configured environment
@@ -512,7 +646,28 @@ The MCP client:
 4. Executes tool calls with proper JSON-RPC message format
 5. Parses responses and handles errors gracefully
 
-The MCP server is automatically configured and managed by Zeteo. If the server is not available, Zeteo will continue to work without log exploration features.
+The MCP server is automatically configured and managed by Zeteo.
+
+#### 2. Direct Backend Clients
+
+For OpenObserve and Kibana, Zeteo provides direct HTTP client implementations:
+
+- **OpenObserve Client**: Uses SQL-based queries with native OpenObserve API
+  - Supports time-based filtering with microsecond precision
+  - Organization and stream-based data isolation
+  - Basic authentication support
+
+- **Kibana Client**: Uses KQL for powerful log queries
+  - Integrates with Kibana's internal Elasticsearch API
+  - JWT token authentication
+  - Version-aware API calls
+
+- **Elasticsearch Client**: Direct Elasticsearch queries
+  - Full Elasticsearch DSL support
+  - Advanced filtering and aggregations
+  - Basic authentication or API key support
+
+### How It Works
 
 ## Development
 
@@ -522,6 +677,10 @@ The MCP server is automatically configured and managed by Zeteo. If the server i
 zeteo-cli/
 ├── src/
 │   ├── main.rs           # CLI entry point
+│   ├── backends/         # Backend client implementations
+│   │   ├── elasticsearch.rs  # Elasticsearch client
+│   │   ├── openobserve.rs    # OpenObserve client
+│   │   └── kibana.rs         # Kibana client
 │   ├── config/           # Configuration management
 │   ├── mcp/              # MCP client integration
 │   ├── providers/        # AI provider implementations

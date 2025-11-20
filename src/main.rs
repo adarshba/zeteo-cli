@@ -4,6 +4,7 @@ use clap_complete::{generate, Shell};
 use colored::*;
 use std::io;
 
+mod backends;
 mod cache;
 mod config;
 mod logs;
