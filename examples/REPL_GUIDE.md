@@ -1,90 +1,251 @@
 # Zeteo CLI - Interactive REPL Mode Examples
 
-This guide demonstrates the new interactive REPL mode and advanced features added to Zeteo CLI.
+This guide demonstrates the enhanced interactive REPL mode with beautiful UI and advanced features.
 
-## Interactive REPL Mode
+## 🎨 New Enhanced REPL Experience
+
+The REPL mode has been completely redesigned with a focus on visual appeal and user experience!
 
 ### Starting the REPL
 
-Simply run `zeteo` without any command to enter interactive mode:
+Simply run `zeteo` without any command to enter the beautiful interactive mode:
 
 ```bash
 $ export OPENAI_API_KEY="your-key"
 $ zeteo
 
-╔═══════════════════════════════════════════════════════════╗
-║           Welcome to Zeteo Interactive Shell             ║
-╚═══════════════════════════════════════════════════════════╝
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║                                                               ║
+  ║   ███████╗███████╗████████╗███████╗ ██████╗                 ║
+  ║   ╚══███╔╝██╔════╝╚══██╔══╝██╔════╝██╔═══██╗                ║
+  ║     ███╔╝ █████╗     ██║   █████╗  ██║   ██║                ║
+  ║    ███╔╝  ██╔══╝     ██║   ██╔══╝  ██║   ██║                ║
+  ║   ███████╗███████╗   ██║   ███████╗╚██████╔╝                ║
+  ║   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ╚═════╝                 ║
+  ║                                                               ║
+  ║        AI-Powered OTEL Log Explorer & Chat Assistant         ║
+  ║                                                               ║
+  ╚═══════════════════════════════════════════════════════════════╝
 
-Provider: openai
+┌─ Provider: 🤖 openai
+└─ Log Explorer: ✓ Connected
 
-Available commands:
-  /exit - Exit the REPL
-  /clear - Clear conversation history
-  /help - Show help
-  /logs - Search logs (e.g., /logs error)
-  /provider - Switch provider (e.g., /provider openai)
-  /export - Export conversation to file (json or csv)
-  /history - Show conversation history
+╭──────────── Available Commands ────────────╮
+│                                            │
+│  🚪 /exit, /quit, /q   → Exit the REPL
+│  🗑️ /clear            → Clear conversation history
+│  ❓ /help, /h         → Show detailed help
+│  🔍 /logs <query>     → Search OTEL logs
+│  📊 /stats            → Show session statistics
+│  💾 /export [file]    → Export conversation
+│  📜 /history          → Show conversation history
+│                                            │
+╰────────────────────────────────────────────╯
 
-Type your message and press Enter to chat.
-Press Ctrl+C or type /exit to quit.
+💡 Tip: Just type your message to start chatting!
+   Press Ctrl+C or type /exit to quit.
 
-zeteo>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+zeteo [0]>
 ```
+
+### 🌟 Visual Enhancements
+
+- **Beautiful ASCII Art Banner**: Eye-catching ZETEO logo on startup
+- **Provider Icons**: Emoji indicators for each AI provider (🤖 🔷 🔵 ☁️)
+- **Color-Coded Output**: Different colors for different types of information
+- **Clean Layout**: Professional borders and section dividers
+- **Message Counter**: Track conversation depth in the prompt `[N]`
 
 ### Using Different Providers
 
-```bash
-# Use Google AI
-$ export GOOGLE_API_KEY="your-key"
-$ zeteo --provider google
+Each provider gets its unique icon and color scheme:
 
-# Use Vertex AI
+```bash
+# OpenAI - 🤖
+$ export OPENAI_API_KEY="your-key"
+$ zeteo --provider openai
+
+# Vertex AI - 🔷
 $ export GOOGLE_CLOUD_PROJECT="your-project"
 $ zeteo --provider vertex
 
-# Use Azure OpenAI
+# Google AI - 🔵
+$ export GOOGLE_API_KEY="your-key"
+$ zeteo --provider google
+
+# Azure OpenAI - ☁️
 $ export AZURE_OPENAI_API_KEY="your-key"
 $ export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
 $ export AZURE_OPENAI_DEPLOYMENT="your-deployment"
 $ zeteo --provider azure
 ```
 
-### Example Conversation
+### 💬 Example Conversation with Enhanced UI
 
 ```
-zeteo> What is OpenTelemetry?
+zeteo [0]> What is OpenTelemetry?
 
+💭 Thinking...
+
+┌─ AI Response ─────────────────────────────────────
 OpenTelemetry is an observability framework for cloud-native software...
 
-zeteo> How do I instrument a Node.js application?
+Key features:
+- Unified standard for traces, metrics, and logs
+- Vendor-neutral and open-source
+- Wide language support
+└───────────────────────────────────────────────────
 
+⏱  Response time: 1.23s
+
+zeteo [1]> How do I instrument a Node.js application?
+
+💭 Thinking...
+
+┌─ AI Response ─────────────────────────────────────
 To instrument a Node.js application with OpenTelemetry:
-1. Install the required packages...
-2. Initialize the SDK...
 
-zeteo> Can you show me a code example?
+1. Install the required packages
+2. Initialize the SDK
+3. Configure exporters
+└───────────────────────────────────────────────────
 
-Here's a complete example:
-[code example provided with context from previous questions]
+⏱  Response time: 1.45s
 
-zeteo> /history
-=== Conversation History ===
+zeteo [2]> /stats
 
-[1] You: What is OpenTelemetry?
-[2] AI: OpenTelemetry is an observability framework...
-[3] You: How do I instrument a Node.js application?
-[4] AI: To instrument a Node.js application...
-[5] You: Can you show me a code example?
-[6] AI: Here's a complete example...
+╔══════════════════════════════════════════════════╗
+║          Session Statistics                      ║
+╚══════════════════════════════════════════════════╝
 
-zeteo> /export otel-conversation.json
-Conversation exported to: otel-conversation.json
+  💬 Total messages exchanged:     2
+  📝 Messages in history:          4
+  ⏱  Session duration:             0h 2m 15s
+  🤖 AI Provider:                  openai
+  🔍 Log Explorer:                 Connected ✓
 
-zeteo> /exit
-Exiting REPL...
+  📊 Average time per exchange: 1.3s
+
+zeteo [2]> /history
+
+╭────────── Conversation History ──────────╮
+│                                          │
+│ 👤 [1] You:
+│   What is OpenTelemetry?
+│                                          │
+│ 🤖 [1] AI:
+│   OpenTelemetry is an observability framework for c...
+│                                          │
+│ 👤 [2] You:
+│   How do I instrument a Node.js application?
+│                                          │
+│ 🤖 [2] AI:
+│   To instrument a Node.js application with OpenTele...
+│                                          │
+╰──────────────────────────────────────────╯
+
+💡 Tip: Use /export to save full conversation
+
+zeteo [2]> /export otel-conversation.json
+
+✓ Conversation exported to: otel-conversation.json
+
+zeteo [2]> /exit
+
+╔═══════════════════════════════════════════════════════════╗
+║                 Thank You for Using Zeteo!               ║
+╚═══════════════════════════════════════════════════════════╝
+
+📊 Session Summary:
+   2 messages exchanged in 2 minutes
+
+💡 Tip: Don't forget to export your conversation with /export
+
+👋 Goodbye!
 ```
+
+## 📊 New /stats Command
+
+The `/stats` command provides detailed session analytics:
+
+- **Message Count**: Total exchanges and history size
+- **Session Duration**: Time spent in the REPL
+- **Provider Info**: Current AI provider and connection status
+- **Performance Metrics**: Average response time per exchange
+
+```bash
+zeteo> /stats
+```
+
+## 📋 REPL Special Commands Reference
+
+### Core Commands
+
+| Command | Icon | Description | Example |
+|---------|------|-------------|---------|
+| `/exit`, `/quit`, `/q` | 🚪 | Exit the REPL with session summary | `/exit` |
+| `/clear` | 🗑️ | Clear conversation history | `/clear` |
+| `/help`, `/h` | ❓ | Show detailed help and tips | `/help` |
+| `/stats` | 📊 | Show session statistics | `/stats` |
+
+### Log Commands
+
+| Command | Icon | Description | Example |
+|---------|------|-------------|---------|
+| `/logs <query>` | 🔍 | Search OTEL logs | `/logs error` |
+
+### Export & History
+
+| Command | Icon | Description | Example |
+|---------|------|-------------|---------|
+| `/export [file]` | 💾 | Export conversation to JSON/CSV | `/export chat.json` |
+| `/history` | 📜 | Show conversation history | `/history` |
+
+### Provider Info
+
+| Command | Icon | Description | Example |
+|---------|------|-------------|---------|
+| `/provider` | 🔄 | Show current provider info | `/provider` |
+
+## 🎨 Enhanced Features
+
+### Color-Coded Output
+
+The REPL uses intelligent color coding:
+- **Green**: Success messages and AI responses
+- **Yellow**: Warnings and tips
+- **Red**: Errors and issues
+- **Cyan**: Commands and prompts
+- **Magenta**: Statistics and highlights
+- **Dimmed**: Less important info and timestamps
+
+### Response Formatting
+
+AI responses are automatically formatted with:
+- Syntax highlighting hints for code blocks
+- Bold headers (lines starting with #)
+- Highlighted list items (- and numbered lists)
+- Clean borders and separators
+- Response time tracking
+
+### Smart Indicators
+
+- **💭 Thinking...**: Shows while waiting for AI response
+- **✓ Success**: Confirms successful operations
+- **⚠ Warning**: Alerts about potential issues
+- **❌ Error**: Indicates problems with helpful suggestions
+- **ℹ Info**: Provides additional context
+
+### Session Tracking
+
+Every REPL session tracks:
+- Number of message exchanges
+- Total session duration
+- Individual response times
+- Provider and configuration status
+- Log explorer connectivity
 
 ## Advanced Log Features
 
@@ -271,16 +432,37 @@ echo "=====================" >> report.txt
 cat analysis.txt >> report.txt
 ```
 
-## Tips and Best Practices
+## 💡 Tips and Best Practices
 
-1. **Start with REPL for exploration**: Use interactive mode to explore logs and get AI assistance
-2. **Use filters to reduce noise**: Combine `--level`, `--service`, and query for precise results
-3. **Export important conversations**: Save debugging sessions for team review
-4. **Stream during incidents**: Use `--stream` to monitor logs in real-time
-5. **Aggregate for overview**: Use `--aggregate` to understand log distribution
-6. **Export in appropriate format**:
+### REPL Usage Tips
+
+1. **Start with REPL for exploration**: The interactive mode is perfect for ad-hoc queries and exploration
+2. **Use /stats regularly**: Monitor your session performance and activity
+3. **Export important conversations**: Save debugging sessions for team review with `/export`
+4. **Leverage conversation history**: The AI remembers context, so build on previous questions
+5. **Check response times**: Use the displayed metrics to understand AI performance
+
+### Visual Experience Tips
+
+1. **Full terminal width**: The REPL looks best in a wide terminal (80+ columns)
+2. **Color support**: Ensure your terminal supports ANSI colors for the full experience
+3. **Clear screen on start**: The REPL automatically clears the screen for a fresh start
+4. **Watch the message counter**: The `[N]` in the prompt shows conversation depth
+
+### Log Exploration Tips
+
+1. **Use filters to reduce noise**: Combine `--level`, `--service`, and query for precise results
+2. **Stream during incidents**: Use `--stream` to monitor logs in real-time
+3. **Aggregate for overview**: Use `--aggregate` to understand log distribution
+4. **Export in appropriate format**:
    - JSON for programmatic processing
    - CSV for spreadsheet analysis
+
+### Performance Tips
+
+1. **Monitor response times**: Each AI response shows its execution time
+2. **Check session stats**: Use `/stats` to see average response times
+3. **Clear history when needed**: Use `/clear` to start fresh if the context gets too large
 
 ## Configuration
 
@@ -296,10 +478,40 @@ Verify configuration:
 $ zeteo config --show
 ```
 
+## 🚀 What's New in the Enhanced REPL
+
+### Visual Improvements
+- ✨ Beautiful ASCII art banner with ZETEO branding
+- 🎨 Provider-specific emoji icons for quick identification
+- 🌈 Rich color scheme with intelligent color coding
+- 📊 Professional borders and section dividers
+- 🔢 Message counter in prompt showing conversation depth
+
+### New Commands
+- 📊 `/stats` - Comprehensive session statistics
+- 📋 Enhanced `/history` - Beautiful conversation summary
+- 🔄 `/provider` - Detailed provider information
+
+### UX Enhancements
+- ⚡ Response time tracking for every AI interaction
+- 💭 Animated thinking indicator
+- 🎯 Color-coded status messages (✓ ⚠ ❌ ℹ)
+- 📈 Session duration and performance metrics
+- 👋 Friendly goodbye message with session summary
+
+### Better Formatting
+- 🎨 Syntax highlighting hints in responses
+- 📝 Formatted lists and headers
+- 📦 Clean response boxes with borders
+- 💡 Helpful tips throughout the interface
+- 🗂️ Truncated history view for quick browsing
+
 ## Future Enhancements
 
-While these features are now complete, future versions may include:
-- Full ncurses-style TUI mode
-- Persistent conversation history across sessions
-- Response caching for repeated queries
-- Automatic retry with exponential backoff for failed requests
+While the REPL is now beautifully enhanced and stable, future versions may include:
+- 🖥️ Full ncurses-style TUI mode with split panels
+- 💾 Persistent conversation history across sessions
+- ⚡ Response caching for repeated queries
+- 🔄 Automatic retry with exponential backoff for failed requests
+- 🎭 Theme customization options
+- 📱 Mobile-friendly terminal output
