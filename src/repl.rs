@@ -816,10 +816,21 @@ pub async fn create_repl_session(provider_name: Option<String>) -> Result<ReplSe
 
     let mut session = ReplSession::new(provider, actual_provider_name.clone());
 
-    // Try to initialize log explorer
+    // Try to initialize log explorer with MCP client
     if let Ok(config) = Config::load() {
         if config.servers.contains_key("otel-mcp-server") {
             let explorer = LogExplorer::new("otel-mcp-server".to_string());
+            // Try to initialize MCP client, but continue even if it fails
+            let explorer = match explorer.with_mcp_client() {
+                Ok(initialized_explorer) => initialized_explorer,
+                Err(e) => {
+                    // Log the error but continue - user can still use AI chat without logs
+                    eprintln!("{} {}", "⚠ Warning: Could not initialize MCP client:".yellow(), e);
+                    eprintln!("{}", "  Log exploration will not be available.".dimmed());
+                    // Return the original explorer without MCP client
+                    LogExplorer::new("otel-mcp-server".to_string())
+                }
+            };
             session = session.with_log_explorer(explorer);
         }
     }

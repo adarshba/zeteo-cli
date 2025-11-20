@@ -3,6 +3,9 @@ use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::config::Config;
+use crate::mcp::McpClient;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub timestamp: String,
@@ -45,16 +48,59 @@ pub struct LogAggregation {
 
 pub struct LogExplorer {
     mcp_server: String,
+    mcp_client: Option<McpClient>,
 }
 
 impl LogExplorer {
     pub fn new(mcp_server: String) -> Self {
-        LogExplorer { mcp_server }
+        LogExplorer { 
+            mcp_server,
+            mcp_client: None,
+        }
+    }
+    
+    /// Initialize the MCP client connection
+    pub fn with_mcp_client(mut self) -> Result<Self> {
+        let config = Config::load()?;
+        
+        if let Some(server_config) = config.servers.get(&self.mcp_server) {
+            let mut client = McpClient::new(
+                &server_config.command,
+                &server_config.args,
+                &server_config.env,
+                self.mcp_server.clone(),
+            )?;
+            
+            // Initialize the MCP client
+            client.initialize()?;
+            
+            self.mcp_client = Some(client);
+        }
+        
+        Ok(self)
     }
     
     pub async fn search_logs(&self, query: &str, max_results: usize) -> Result<Vec<LogEntry>> {
-        // This would use the MCP client to query logs
-        // For now, returning placeholder data
+        // Try to use MCP client if available
+        if let Some(client) = &self.mcp_client {
+            match client.query_logs(query, max_results) {
+                Ok(result) => {
+                    // Parse the result into LogEntry structs
+                    if let Some(logs_array) = result.get("logs").and_then(|v| v.as_array()) {
+                        let logs: Vec<LogEntry> = logs_array
+                            .iter()
+                            .filter_map(|log| serde_json::from_value(log.clone()).ok())
+                            .collect();
+                        return Ok(logs);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{} {}", "⚠ MCP query failed:".yellow(), e);
+                }
+            }
+        }
+        
+        // Fallback: return placeholder data
         println!("Searching logs with query: {}", query.cyan());
         println!("MCP Server: {}", self.mcp_server.green());
         println!("Max results: {}", max_results);
