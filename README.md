@@ -484,13 +484,35 @@ zeteo completions powershell > ~/.config/powershell/zeteo.ps1
 
 ## MCP Server Integration
 
+Zeteo now features a **full MCP (Model Context Protocol) client implementation** with JSON-RPC 2.0 communication!
+
+### Features
+- ✅ **Complete JSON-RPC 2.0 Protocol**: Proper stdin/stdout communication
+- ✅ **Initialize Handshake**: Protocol version negotiation
+- ✅ **Tools Discovery**: Automatic tool listing via `tools/list`
+- ✅ **Tool Execution**: Call tools with `tools/call` method
+- ✅ **Log Queries**: Direct integration with otel-mcp-server
+- ✅ **Process Management**: Automatic lifecycle management
+- ✅ **Error Handling**: Robust error handling with fallbacks
+
+### Supported Backends
+
 Zeteo integrates with the [otel-mcp-server](https://www.npmjs.com/package/otel-mcp-server) to query OpenTelemetry logs from various backends:
 
-- Elasticsearch
-- OpenObserve
-- Kibana
+- **Elasticsearch** - Query logs from Elasticsearch clusters
+- **OpenObserve** - Integration with OpenObserve platform
+- **Kibana** - Access logs through Kibana interface
 
-The MCP server is automatically configured and managed by Zeteo.
+### How It Works
+
+The MCP client:
+1. Spawns the otel-mcp-server process with configured environment
+2. Performs initialization handshake with protocol negotiation
+3. Discovers available tools (e.g., `query_logs`)
+4. Executes tool calls with proper JSON-RPC message format
+5. Parses responses and handles errors gracefully
+
+The MCP server is automatically configured and managed by Zeteo. If the server is not available, Zeteo will continue to work without log exploration features.
 
 ## Development
 
@@ -566,11 +588,41 @@ zeteo --provider openai      # Requires OPENAI_API_KEY (default)
 - `/exit`, `/quit`, `/q` 🚪 - Exit with session summary
 - `/clear` 🗑️ - Clear conversation history
 - `/help` ❓ - Show detailed help
+- `/config` ⚙️ - Show configuration info (NEW!)
 - `/stats` 📊 - Show session statistics (NEW!)
 - `/logs <query>` 🔍 - Search OTEL logs
 - `/provider` 🔄 - Show provider info (ENHANCED!)
 - `/export [file]` 💾 - Export conversation (ENHANCED!)
 - `/history` 📜 - Show conversation history (ENHANCED!)
+
+#### New `/config` Command
+
+The `/config` command displays comprehensive configuration information in one place:
+
+```bash
+zeteo [1]> /config
+
+╔══════════════════════════════════════════════════╗
+║          Configuration & Settings               ║
+╚══════════════════════════════════════════════════╝
+
+🤖 AI Provider Configuration
+  ├─ Provider:             openai
+  └─ Model:                gpt-4o (default), gpt-4, gpt-3.5-turbo
+
+🔌 MCP Server Configuration
+  ├─ Server:               otel-mcp-server
+  ├─ Command:              npx -y otel-mcp-server
+  ├─ Elasticsearch URL:    http://localhost:9200
+  ├─ ES Username:          elastic
+  └─ Status:               Connected ✓
+
+🌍 Environment Settings
+  └─ OPENAI_API_KEY:       Set ✓
+
+📁 Configuration File
+  └─ ~/.config/zeteo-cli/config.json
+```
 
 ### 🎬 Example Session
 
@@ -653,10 +705,47 @@ See [examples/REPL_GUIDE.md](examples/REPL_GUIDE.md) for more detailed examples 
 - [x] **Export functionality (CSV, JSON files)**
 - [x] **Response caching for better performance**
 - [x] **Retry logic with exponential backoff**
-- [ ] Interactive TUI mode with full terminal UI
-- [ ] Full MCP client implementation
+- [x] **Interactive TUI mode with full terminal UI** 🎉 (NEW!)
+- [x] **Full MCP client implementation** 🎉 (NEW!)
 
 **Note**: The REPL mode is now the flagship feature with a complete visual overhaul and stabilization!
+
+## Interactive TUI Mode 🎉
+
+Zeteo now features a full-screen Terminal User Interface (TUI) mode with split panels for an immersive experience!
+
+### Features
+- 🖥️ **Split Panel Layout**: Chat panel (60%) and Logs panel (40%)
+- ⌨️ **Vim-like Keybindings**: `i` for insert mode, `ESC` for normal mode
+- 🎨 **Beautiful Interface**: Color-coded panels with focus indicators
+- 📊 **Real-time Status**: Session info and message count
+- ❓ **Built-in Help**: Press `h` to toggle help screen
+- 🔄 **Panel Navigation**: Press `Tab` to cycle between panels
+
+### Quick Start
+```bash
+# Launch TUI mode with default provider (OpenAI)
+zeteo tui
+
+# Launch with specific provider
+zeteo tui --provider google
+zeteo tui --provider vertex
+zeteo tui --provider azure
+```
+
+### Keyboard Shortcuts
+- `q` - Quit application
+- `h` - Toggle help screen
+- `i` - Enter insert mode (edit input)
+- `ESC` - Exit insert mode
+- `Tab` - Cycle focus between panels
+- `Enter` - Send message (in insert mode)
+- `Ctrl+C` - Force quit
+
+### TUI Commands
+- `/clear` - Clear conversation history
+- `/logs` - Switch focus to logs panel
+- `/help` - Toggle help screen
 
 ## Advanced Features
 
