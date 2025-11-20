@@ -193,9 +193,12 @@ zeteo completions bash > ~/.bash_completion.d/zeteo
 - [x] **Response caching system**
 - [x] **Retry logic with exponential backoff**
 
+### ✅ Completed (100%)
+- [x] Interactive TUI mode with full terminal UI ✨ (NEW!)
+- [x] Full MCP client implementation with JSON-RPC 2.0 ✨ (NEW!)
+- [x] /config command in REPL ✨ (NEW!)
+
 ### 🚧 Remaining (Future Enhancements)
-- [ ] Interactive TUI mode with full terminal UI (ncurses-style)
-- [ ] Full MCP client communication (currently placeholder)
 - [ ] Structured logging with tracing
 - [ ] Persistent conversation history/checkpointing to disk
 - [ ] Theme customization options
@@ -214,9 +217,12 @@ zeteo completions bash > ~/.bash_completion.d/zeteo
 | Binary Size | ~100MB | ~8MB | ✅ Better |
 | Startup Time | ~200ms | ~5ms | ✅ Better |
 | Shell Completions | ✅ | ✅ | ✅ Equal |
-| MCP Support | ✅ Full | 🚧 Structure | 🚧 In Progress |
+| MCP Support | ✅ Full | ✅ Full JSON-RPC 2.0 | ✅ Equal |
+| TUI Mode | ❌ | ✅ Full-screen TUI | ✅ Better |
+| REPL Mode | ✅ | ✅ Enhanced | ✅ Equal |
+| Config Command | ❌ | ✅ /config in REPL | ✅ Better |
 | File Operations | ✅ | ❌ | 🚧 Future |
-| Conversation History | ✅ | ❌ | 🚧 Future |
+| Conversation History | ✅ | ✅ (in-session) | ✅ Equal |
 | GitHub Integration | ✅ | ❌ | 🚧 Future |
 
 ## 🔐 Security
