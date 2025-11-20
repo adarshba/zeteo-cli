@@ -11,5 +11,32 @@
         "LOGLEVEL": "OFF"
       }
     }
+  },
+  "backends": {
+    "elasticsearch": {
+      "type": "elasticsearch",
+      "url": "http://localhost:9200",
+      "username": "elastic",
+      "password": "changeme",
+      "index_pattern": "logs-*",
+      "verify_ssl": false
+    },
+    "openobserve": {
+      "type": "openobserve",
+      "url": "http://localhost:5080",
+      "username": "admin@example.com",
+      "password": "changeme",
+      "organization": "default",
+      "stream": "default",
+      "verify_ssl": false
+    },
+    "kibana": {
+      "type": "kibana",
+      "url": "http://localhost:5601",
+      "auth_token": null,
+      "index_pattern": "logs-*",
+      "verify_ssl": false,
+      "version": "7.10.2"
+    }
   }
 }
