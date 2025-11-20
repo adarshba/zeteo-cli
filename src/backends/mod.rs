@@ -31,6 +31,8 @@ pub struct LogEntry {
 #[async_trait]
 pub trait LogBackendClient: Send + Sync {
     async fn query_logs(&self, query: &LogQuery) -> Result<Vec<LogEntry>>;
+    #[allow(dead_code)]
     async fn health_check(&self) -> Result<bool>;
+    #[allow(dead_code)]
     fn backend_name(&self) -> &str;
 }

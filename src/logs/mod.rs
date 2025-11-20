@@ -22,25 +22,13 @@ pub struct LogEntry {
     pub labels: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LogFilter {
     pub level: Option<String>,
     pub service: Option<String>,
     pub start_time: Option<String>,
     pub end_time: Option<String>,
     pub contains: Option<String>,
-}
-
-impl Default for LogFilter {
-    fn default() -> Self {
-        Self {
-            level: None,
-            service: None,
-            start_time: None,
-            end_time: None,
-            contains: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]

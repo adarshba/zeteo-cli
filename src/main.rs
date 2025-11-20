@@ -212,6 +212,7 @@ async fn run_tui_mode(provider: Option<String>) -> Result<()> {
     app.run().await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_logs(
     query: Option<String>,
     max: usize,

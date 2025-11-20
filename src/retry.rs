@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::time::Duration;
 
+#[allow(dead_code)]
 pub struct RetryConfig {
     pub max_retries: u32,
     pub initial_delay: Duration,
@@ -19,6 +20,7 @@ impl Default for RetryConfig {
     }
 }
 
+#[allow(dead_code)]
 pub async fn retry_with_backoff<F, T, Fut>(
     operation: F,
     config: &RetryConfig,
