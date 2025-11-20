@@ -117,6 +117,10 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if it exists (silently ignore if not found)
+    // This allows users to store API keys in a .env file
+    let _ = dotenv::dotenv();
+    
     // Setup graceful shutdown
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     
@@ -131,6 +135,9 @@ async fn main() -> Result<()> {
     
     if cli.verbose {
         println!("{}", "Verbose mode enabled".dimmed());
+        if dotenv::dotenv().is_ok() {
+            println!("{}", "Loaded environment variables from .env file".dimmed());
+        }
     }
     
     let result = tokio::select! {
