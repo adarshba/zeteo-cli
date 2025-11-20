@@ -226,6 +226,21 @@ impl ReplSession {
     }
 
     async fn handle_chat_message(&mut self, input: &str) -> Result<()> {
+        // Add system context on first message if log explorer is available
+        if self.conversation_history.is_empty() && self.log_explorer.is_some() {
+            let system_message = Message {
+                role: "system".to_string(),
+                content: "You are Zeteo, an AI assistant with access to OTEL (OpenTelemetry) log exploration capabilities. \
+                When users ask about logs, recent events, errors, or want to search/query logs, you should instruct them to use the '/logs <query>' command. \
+                For example:\n\
+                - If asked \"show me logs from the last 15 minutes\", respond with: \"To view recent logs, use the command: `/logs *` to see all logs, or specify a search term like `/logs error` to filter.\"\n\
+                - If asked about errors, suggest: `/logs error`\n\
+                - If asked about a specific service, suggest: `/logs service-name`\n\
+                You have a log explorer connected and ready to help users search through their OTEL logs.".to_string(),
+            };
+            self.conversation_history.push(system_message);
+        }
+        
         // Add user message to history
         let user_message = Message {
             role: "user".to_string(),
@@ -562,51 +577,103 @@ impl ReplSession {
     }
 }
 
-pub async fn create_repl_session(provider_name: Option<String>) -> Result<ReplSession> {
-    let provider_name = provider_name.unwrap_or_else(|| "openai".to_string());
-    
-    let provider: Arc<dyn AiProvider> = match provider_name.to_lowercase().as_str() {
+/// Try to create a provider with the given name, returning None if env vars are missing
+fn try_create_provider(provider_name: &str) -> Option<(Arc<dyn AiProvider>, String)> {
+    match provider_name.to_lowercase().as_str() {
         "openai" => {
-            let api_key = std::env::var("OPENAI_API_KEY")
-                .map_err(|_| anyhow::anyhow!(
-                    "OPENAI_API_KEY not set. Please set it with: export OPENAI_API_KEY=your-key"
-                ))?;
-            Arc::new(crate::providers::OpenAiProvider::new(api_key, None))
-        }
-        "vertex" => {
-            let project_id = std::env::var("GOOGLE_CLOUD_PROJECT")
-                .map_err(|_| anyhow::anyhow!(
-                    "GOOGLE_CLOUD_PROJECT not set. Please set it with: export GOOGLE_CLOUD_PROJECT=your-project"
-                ))?;
-            let location = std::env::var("GOOGLE_CLOUD_LOCATION")
-                .unwrap_or_else(|_| "us-central1".to_string());
-            Arc::new(crate::providers::VertexProvider::new(project_id, location, None))
-        }
-        "google" => {
-            let api_key = std::env::var("GOOGLE_API_KEY")
-                .map_err(|_| anyhow::anyhow!(
-                    "GOOGLE_API_KEY not set. Please set it with: export GOOGLE_API_KEY=your-key"
-                ))?;
-            Arc::new(crate::providers::GoogleProvider::new(api_key, None))
+            let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+            Some((Arc::new(crate::providers::OpenAiProvider::new(api_key, None)), "openai".to_string()))
         }
         "azure" => {
-            let api_key = std::env::var("AZURE_OPENAI_API_KEY")
-                .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_API_KEY not set"))?;
-            let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT")
-                .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_ENDPOINT not set"))?;
-            let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT")
-                .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_DEPLOYMENT not set"))?;
-            Arc::new(crate::providers::AzureProvider::new(api_key, endpoint, deployment))
+            let api_key = std::env::var("AZURE_OPENAI_API_KEY").ok()?;
+            let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT").ok()?;
+            let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT").ok()?;
+            Some((Arc::new(crate::providers::AzureProvider::new(api_key, endpoint, deployment)), "azure".to_string()))
         }
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Unknown provider: {}. Supported: openai, vertex, google, azure",
-                provider_name
-            ));
+        "google" => {
+            let api_key = std::env::var("GOOGLE_API_KEY").ok()?;
+            Some((Arc::new(crate::providers::GoogleProvider::new(api_key, None)), "google".to_string()))
         }
+        "vertex" => {
+            let project_id = std::env::var("GOOGLE_CLOUD_PROJECT").ok()?;
+            let location = std::env::var("GOOGLE_CLOUD_LOCATION")
+                .unwrap_or_else(|_| "us-central1".to_string());
+            Some((Arc::new(crate::providers::VertexProvider::new(project_id, location, None)), "vertex".to_string()))
+        }
+        _ => None,
+    }
+}
+
+/// Find the first working provider by checking env vars
+fn find_first_working_provider() -> Option<(Arc<dyn AiProvider>, String)> {
+    // Try providers in order: openai, azure, google, vertex
+    let providers = ["openai", "azure", "google", "vertex"];
+    
+    for provider_name in &providers {
+        if let Some(provider) = try_create_provider(provider_name) {
+            return Some(provider);
+        }
+    }
+    
+    None
+}
+
+pub async fn create_repl_session(provider_name: Option<String>) -> Result<ReplSession> {
+    let (provider, actual_provider_name) = if let Some(name) = provider_name {
+        // User specified a provider, try to create it
+        match name.to_lowercase().as_str() {
+            "openai" => {
+                let api_key = std::env::var("OPENAI_API_KEY")
+                    .map_err(|_| anyhow::anyhow!(
+                        "OPENAI_API_KEY not set. Please set it with: export OPENAI_API_KEY=your-key"
+                    ))?;
+                (Arc::new(crate::providers::OpenAiProvider::new(api_key, None)) as Arc<dyn AiProvider>, "openai".to_string())
+            }
+            "vertex" => {
+                let project_id = std::env::var("GOOGLE_CLOUD_PROJECT")
+                    .map_err(|_| anyhow::anyhow!(
+                        "GOOGLE_CLOUD_PROJECT not set. Please set it with: export GOOGLE_CLOUD_PROJECT=your-project"
+                    ))?;
+                let location = std::env::var("GOOGLE_CLOUD_LOCATION")
+                    .unwrap_or_else(|_| "us-central1".to_string());
+                (Arc::new(crate::providers::VertexProvider::new(project_id, location, None)) as Arc<dyn AiProvider>, "vertex".to_string())
+            }
+            "google" => {
+                let api_key = std::env::var("GOOGLE_API_KEY")
+                    .map_err(|_| anyhow::anyhow!(
+                        "GOOGLE_API_KEY not set. Please set it with: export GOOGLE_API_KEY=your-key"
+                    ))?;
+                (Arc::new(crate::providers::GoogleProvider::new(api_key, None)) as Arc<dyn AiProvider>, "google".to_string())
+            }
+            "azure" => {
+                let api_key = std::env::var("AZURE_OPENAI_API_KEY")
+                    .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_API_KEY not set"))?;
+                let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT")
+                    .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_ENDPOINT not set"))?;
+                let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT")
+                    .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_DEPLOYMENT not set"))?;
+                (Arc::new(crate::providers::AzureProvider::new(api_key, endpoint, deployment)) as Arc<dyn AiProvider>, "azure".to_string())
+            }
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Unknown provider: {}. Supported: openai, vertex, google, azure",
+                    name
+                ));
+            }
+        }
+    } else {
+        // No provider specified, find the first working one
+        find_first_working_provider()
+            .ok_or_else(|| anyhow::anyhow!(
+                "No AI provider configured. Please set environment variables for at least one provider:\n\
+                 - OpenAI: OPENAI_API_KEY\n\
+                 - Azure: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT\n\
+                 - Google: GOOGLE_API_KEY\n\
+                 - Vertex: GOOGLE_CLOUD_PROJECT"
+            ))?
     };
 
-    let mut session = ReplSession::new(provider, provider_name.clone());
+    let mut session = ReplSession::new(provider, actual_provider_name.clone());
 
     // Try to initialize log explorer
     if let Ok(config) = Config::load() {
