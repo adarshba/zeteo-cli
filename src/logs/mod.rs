@@ -2,8 +2,13 @@ use anyhow::Result;
 use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::config::Config;
+use crate::backends::{
+    elasticsearch::ElasticsearchClient, kibana::KibanaClient, openobserve::OpenObserveClient,
+    LogBackendClient, LogQuery,
+};
+use crate::config::{Config, LogBackend};
 use crate::mcp::McpClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,25 +22,13 @@ pub struct LogEntry {
     pub labels: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LogFilter {
     pub level: Option<String>,
     pub service: Option<String>,
     pub start_time: Option<String>,
     pub end_time: Option<String>,
     pub contains: Option<String>,
-}
-
-impl Default for LogFilter {
-    fn default() -> Self {
-        Self {
-            level: None,
-            service: None,
-            start_time: None,
-            end_time: None,
-            contains: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,40 +40,128 @@ pub struct LogAggregation {
 }
 
 pub struct LogExplorer {
-    mcp_server: String,
+    mcp_server: Option<String>,
     mcp_client: Option<McpClient>,
+    backend_client: Option<Arc<dyn LogBackendClient>>,
 }
 
 impl LogExplorer {
     pub fn new(mcp_server: String) -> Self {
-        LogExplorer { 
-            mcp_server,
+        LogExplorer {
+            mcp_server: Some(mcp_server),
             mcp_client: None,
+            backend_client: None,
         }
     }
-    
+
+    pub fn with_backend(backend_name: String) -> Result<Self> {
+        let config = Config::load()?;
+
+        let backend = config
+            .backends
+            .get(&backend_name)
+            .ok_or_else(|| anyhow::anyhow!("Backend '{}' not found in config", backend_name))?;
+
+        let client: Arc<dyn LogBackendClient> = match backend {
+            LogBackend::Elasticsearch {
+                url,
+                username,
+                password,
+                index_pattern,
+                verify_ssl,
+            } => Arc::new(ElasticsearchClient::new(
+                url.clone(),
+                username.clone(),
+                password.clone(),
+                index_pattern.clone(),
+                *verify_ssl,
+            )?),
+            LogBackend::OpenObserve {
+                url,
+                username,
+                password,
+                organization,
+                stream,
+                verify_ssl,
+            } => Arc::new(OpenObserveClient::new(
+                url.clone(),
+                username.clone(),
+                password.clone(),
+                organization.clone(),
+                stream.clone(),
+                *verify_ssl,
+            )?),
+            LogBackend::Kibana {
+                url,
+                auth_token,
+                index_pattern,
+                verify_ssl,
+                version,
+            } => Arc::new(KibanaClient::new(
+                url.clone(),
+                auth_token.clone(),
+                index_pattern.clone(),
+                version.clone(),
+                *verify_ssl,
+            )?),
+        };
+
+        Ok(LogExplorer {
+            mcp_server: None,
+            mcp_client: None,
+            backend_client: Some(client),
+        })
+    }
+
     /// Initialize the MCP client connection
     pub fn with_mcp_client(mut self) -> Result<Self> {
         let config = Config::load()?;
-        
-        if let Some(server_config) = config.servers.get(&self.mcp_server) {
-            let mut client = McpClient::new(
-                &server_config.command,
-                &server_config.args,
-                &server_config.env,
-                self.mcp_server.clone(),
-            )?;
-            
-            // Initialize the MCP client
-            client.initialize()?;
-            
-            self.mcp_client = Some(client);
+
+        if let Some(mcp_server) = &self.mcp_server {
+            if let Some(server_config) = config.servers.get(mcp_server) {
+                let mut client = McpClient::new(
+                    &server_config.command,
+                    &server_config.args,
+                    &server_config.env,
+                    mcp_server.clone(),
+                )?;
+
+                // Initialize the MCP client
+                client.initialize()?;
+
+                self.mcp_client = Some(client);
+            }
         }
-        
+
         Ok(self)
     }
-    
+
     pub async fn search_logs(&self, query: &str, max_results: usize) -> Result<Vec<LogEntry>> {
+        // Try direct backend client first
+        if let Some(backend_client) = &self.backend_client {
+            let log_query = LogQuery {
+                query: query.to_string(),
+                max_results,
+                start_time: None,
+                end_time: None,
+                level: None,
+                service: None,
+            };
+
+            let backend_logs = backend_client.query_logs(&log_query).await?;
+            return Ok(backend_logs
+                .into_iter()
+                .map(|log| LogEntry {
+                    timestamp: log.timestamp,
+                    level: log.level,
+                    message: log.message,
+                    service: log.service,
+                    trace_id: log.trace_id,
+                    labels: log.labels,
+                })
+                .collect());
+        }
+
         // Try to use MCP client if available
         if let Some(client) = &self.mcp_client {
             match client.query_logs(query, max_results) {
@@ -99,16 +180,55 @@ impl LogExplorer {
                 }
             }
         }
-        
+
         // Fallback: return placeholder data
-        println!("Searching logs with query: {}", query.cyan());
-        println!("MCP Server: {}", self.mcp_server.green());
-        println!("Max results: {}", max_results);
-        
+        if let Some(mcp_server) = &self.mcp_server {
+            println!("Searching logs with query: {}", query.cyan());
+            println!("MCP Server: {}", mcp_server.green());
+            println!("Max results: {}", max_results);
+        } else {
+            println!("{}", "No backend or MCP client configured".yellow());
+        }
+
         Ok(vec![])
     }
 
     pub async fn search_logs_with_filter(&self, query: &str, max_results: usize, filter: &LogFilter) -> Result<Vec<LogEntry>> {
+        // Build query with filters
+        if let Some(backend_client) = &self.backend_client {
+            let log_query = LogQuery {
+                query: query.to_string(),
+                max_results,
+                start_time: filter.start_time.clone(),
+                end_time: filter.end_time.clone(),
+                level: filter.level.clone(),
+                service: filter.service.clone(),
+            };
+
+            let backend_logs = backend_client.query_logs(&log_query).await?;
+            let mut logs: Vec<LogEntry> = backend_logs
+                .into_iter()
+                .map(|log| LogEntry {
+                    timestamp: log.timestamp,
+                    level: log.level,
+                    message: log.message,
+                    service: log.service,
+                    trace_id: log.trace_id,
+                    labels: log.labels,
+                })
+                .collect();
+
+            // Apply contains filter if specified
+            if let Some(contains) = &filter.contains {
+                logs.retain(|log| {
+                    log.message.to_lowercase().contains(&contains.to_lowercase())
+                });
+            }
+
+            return Ok(logs);
+        }
+
+        // Fallback to MCP with post-filtering
         let mut logs = self.search_logs(query, max_results).await?;
         
         // Apply filters
@@ -341,7 +461,7 @@ mod tests {
     #[test]
     fn test_log_explorer_creation() {
         let explorer = LogExplorer::new("test-server".to_string());
-        assert_eq!(explorer.mcp_server, "test-server");
+        assert_eq!(explorer.mcp_server, Some("test-server".to_string()));
     }
 
     #[test]

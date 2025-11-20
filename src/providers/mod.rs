@@ -23,6 +23,7 @@ pub struct ChatResponse {
 #[async_trait::async_trait]
 pub trait AiProvider: Send + Sync {
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
+    #[allow(dead_code)]
     fn provider_name(&self) -> &str;
 }
 

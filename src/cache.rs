@@ -9,11 +9,13 @@ pub struct CacheEntry<T> {
     expiry: SystemTime,
 }
 
+#[allow(dead_code)]
 pub struct Cache<T: Clone> {
     store: Arc<RwLock<HashMap<String, CacheEntry<T>>>>,
     default_ttl: Duration,
 }
 
+#[allow(dead_code)]
 impl<T: Clone> Cache<T> {
     pub fn new(default_ttl: Duration) -> Self {
         Self {

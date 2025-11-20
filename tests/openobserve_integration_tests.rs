@@ -298,7 +298,10 @@ async fn test_log_explorer_integration() {
         },
     );
     
-    let config = zeteo_cli::config::Config { servers };
+    let config = zeteo_cli::config::Config { 
+        servers,
+        backends: std::collections::HashMap::new(),
+    };
     
     // Save the config temporarily
     match config.save() {

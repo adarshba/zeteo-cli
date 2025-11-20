@@ -144,7 +144,7 @@ impl VertexProvider {
     async fn get_access_token() -> Result<String> {
         // Try to get access token from gcloud CLI
         let output = tokio::process::Command::new("gcloud")
-            .args(&["auth", "print-access-token"])
+            .args(["auth", "print-access-token"])
             .output()
             .await;
         

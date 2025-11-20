@@ -4,6 +4,7 @@ use clap_complete::{generate, Shell};
 use colored::*;
 use std::io;
 
+mod backends;
 mod cache;
 mod config;
 mod logs;
@@ -62,6 +63,18 @@ enum Commands {
         /// Stream results in real-time
         #[arg(short, long)]
         stream: bool,
+
+        /// Log backend to use (elasticsearch, openobserve, kibana)
+        #[arg(short, long)]
+        backend: Option<String>,
+
+        /// Start time for log query (ISO 8601 format)
+        #[arg(long)]
+        start_time: Option<String>,
+
+        /// End time for log query (ISO 8601 format)
+        #[arg(long)]
+        end_time: Option<String>,
 
         /// Filter by log level (ERROR, WARN, INFO, DEBUG)
         #[arg(long)]
@@ -166,8 +179,8 @@ async fn run_command(command: Option<Commands>, output_format: OutputFormat, pro
     }
 
     match command.unwrap() {
-        Commands::Logs { query, max, interactive, stream, level, service, aggregate, export } => {
-            handle_logs(query, max, interactive, stream, level, service, aggregate, export, output_format).await?;
+        Commands::Logs { query, max, interactive, stream, backend, start_time, end_time, level, service, aggregate, export } => {
+            handle_logs(query, max, interactive, stream, backend, start_time, end_time, level, service, aggregate, export, output_format).await?;
         }
         Commands::Chat { provider, message, stream } => {
             handle_chat(provider, message, stream, output_format).await?;
@@ -199,11 +212,15 @@ async fn run_tui_mode(provider: Option<String>) -> Result<()> {
     app.run().await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_logs(
     query: Option<String>,
     max: usize,
     interactive: bool,
     stream: bool,
+    backend: Option<String>,
+    start_time: Option<String>,
+    end_time: Option<String>,
     level: Option<String>,
     service: Option<String>,
     aggregate: bool,
@@ -212,8 +229,24 @@ async fn handle_logs(
 ) -> Result<()> {
     let _config = Config::load()?;
     
-    let server_name = "otel-mcp-server".to_string();
-    let explorer = LogExplorer::new(server_name.clone());
+    // Create explorer based on backend selection
+    let explorer = if let Some(backend_name) = backend {
+        println!("{} {}", "Using backend:".cyan(), backend_name.green().bold());
+        match LogExplorer::with_backend(backend_name.clone()) {
+            Ok(explorer) => explorer,
+            Err(e) => {
+                eprintln!("{} Failed to initialize backend '{}': {}", "✗".red(), backend_name, e);
+                eprintln!("{} Available backends: elasticsearch, openobserve, kibana", "ℹ".blue());
+                eprintln!("{} Check your config at: ~/.config/zeteo-cli/config.json", "ℹ".blue());
+                return Err(e);
+            }
+        }
+    } else {
+        // Default to MCP server
+        let server_name = "otel-mcp-server".to_string();
+        println!("{} {}", "Using MCP server:".cyan(), server_name.green().bold());
+        LogExplorer::new(server_name.clone())
+    };
     
     if interactive {
         explorer.interactive_mode().await?;
@@ -226,12 +259,12 @@ async fn handle_logs(
             true
         }).await?;
     } else if let Some(q) = query {
-        let logs = if level.is_some() || service.is_some() {
+        let logs = if level.is_some() || service.is_some() || start_time.is_some() || end_time.is_some() {
             let filter = logs::LogFilter {
                 level,
                 service,
-                start_time: None,
-                end_time: None,
+                start_time,
+                end_time,
                 contains: None,
             };
             explorer.search_logs_with_filter(&q, max, &filter).await?
