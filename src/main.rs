@@ -11,6 +11,7 @@ mod mcp;
 mod providers;
 mod repl;
 mod retry;
+mod tui;
 
 use config::Config;
 use logs::LogExplorer;
@@ -104,6 +105,13 @@ enum Commands {
         init: bool,
     },
 
+    /// Full-screen TUI mode with split panels
+    Tui {
+        /// AI provider to use (openai, vertex, google, azure)
+        #[arg(short, long)]
+        provider: Option<String>,
+    },
+
     /// Generate shell completions
     Completions {
         /// Shell type
@@ -167,6 +175,9 @@ async fn run_command(command: Option<Commands>, output_format: OutputFormat, pro
         Commands::Config { show, init } => {
             handle_config(show, init)?;
         }
+        Commands::Tui { provider } => {
+            run_tui_mode(provider).await?;
+        }
         Commands::Completions { shell } => {
             generate_completions(shell);
         }
@@ -181,6 +192,11 @@ async fn run_command(command: Option<Commands>, output_format: OutputFormat, pro
 async fn run_repl_mode(provider: Option<String>) -> Result<()> {
     let mut session = repl::create_repl_session(provider).await?;
     session.run().await
+}
+
+async fn run_tui_mode(provider: Option<String>) -> Result<()> {
+    let mut app = tui::create_tui_session(provider).await?;
+    app.run().await
 }
 
 async fn handle_logs(

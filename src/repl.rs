@@ -125,6 +125,7 @@ impl ReplSession {
             ("/exit, /quit, /q", "Exit the REPL", "🚪"),
             ("/clear", "Clear conversation history", "🗑️"),
             ("/help, /h", "Show detailed help", "❓"),
+            ("/config", "Show configuration info", "⚙️"),
             ("/logs <query>", "Search OTEL logs", "🔍"),
             ("/stats", "Show session statistics", "📊"),
             ("/export [file]", "Export conversation", "💾"),
@@ -213,6 +214,9 @@ impl ReplSession {
             }
             "/stats" => {
                 self.show_statistics();
+            }
+            "/config" => {
+                self.show_config();
             }
             _ => {
                 println!();
@@ -515,6 +519,143 @@ impl ReplSession {
             println!("  {} {:.1}s", 
                 "📊 Average time per exchange:".dimmed(),
                 avg_time_per_msg
+            );
+            println!();
+        }
+    }
+    
+    fn show_config(&self) {
+        println!();
+        println!("{}", "╔══════════════════════════════════════════════════╗".bright_cyan().bold());
+        println!("{}", "║          Configuration & Settings               ║".bright_cyan().bold());
+        println!("{}", "╚══════════════════════════════════════════════════╝".bright_cyan().bold());
+        println!();
+        
+        // AI Provider Information
+        println!("{}", "🤖 AI Provider Configuration".bright_green().bold());
+        println!("  {} {:<25} {}", 
+            "├─".dimmed(),
+            "Provider:",
+            self.provider_name.bright_yellow().bold()
+        );
+        
+        // Get model info based on provider
+        let model_info = match self.provider_name.to_lowercase().as_str() {
+            "openai" => "gpt-4o (default), gpt-4, gpt-3.5-turbo".to_string(),
+            "vertex" => "gemini-pro (via Google Cloud)".to_string(),
+            "google" => "gemini-pro (via API)".to_string(),
+            "azure" => {
+                std::env::var("AZURE_OPENAI_DEPLOYMENT")
+                    .unwrap_or_else(|_| "Not configured".to_string())
+            },
+            _ => "Unknown".to_string(),
+        };
+        
+        println!("  {} {:<25} {}", 
+            "└─".dimmed(),
+            "Model:",
+            model_info.bright_white()
+        );
+        println!();
+        
+        // MCP Server Configuration
+        println!("{}", "🔌 MCP Server Configuration".bright_green().bold());
+        
+        if let Ok(config) = Config::load() {
+            if let Some(server) = config.servers.get("otel-mcp-server") {
+                println!("  {} {:<25} {}", 
+                    "├─".dimmed(),
+                    "Server:",
+                    "otel-mcp-server".bright_yellow().bold()
+                );
+                println!("  {} {:<25} {}", 
+                    "├─".dimmed(),
+                    "Command:",
+                    format!("{} {}", server.command, server.args.join(" ")).bright_white()
+                );
+                
+                if let Some(es_url) = server.env.get("ELASTICSEARCH_URL") {
+                    println!("  {} {:<25} {}", 
+                        "├─".dimmed(),
+                        "Elasticsearch URL:",
+                        es_url.bright_white()
+                    );
+                }
+                
+                if let Some(es_user) = server.env.get("ELASTICSEARCH_USERNAME") {
+                    println!("  {} {:<25} {}", 
+                        "├─".dimmed(),
+                        "ES Username:",
+                        es_user.bright_white()
+                    );
+                }
+                
+                println!("  {} {:<25} {}", 
+                    "└─".dimmed(),
+                    "Status:",
+                    if self.log_explorer.is_some() { 
+                        "Connected ✓".bright_green().bold() 
+                    } else { 
+                        "Not connected ✗".bright_red() 
+                    }
+                );
+            } else {
+                println!("  {} {}", 
+                    "└─".dimmed(),
+                    "Not configured".bright_red()
+                );
+            }
+        } else {
+            println!("  {} {}", 
+                "└─".dimmed(),
+                "Config file not found".bright_red()
+            );
+        }
+        println!();
+        
+        // Environment Information
+        println!("{}", "🌍 Environment Settings".bright_green().bold());
+        
+        let env_vars = match self.provider_name.to_lowercase().as_str() {
+            "openai" => vec![
+                ("OPENAI_API_KEY", std::env::var("OPENAI_API_KEY").is_ok())
+            ],
+            "vertex" => vec![
+                ("GOOGLE_CLOUD_PROJECT", std::env::var("GOOGLE_CLOUD_PROJECT").is_ok()),
+                ("GOOGLE_CLOUD_LOCATION", std::env::var("GOOGLE_CLOUD_LOCATION").is_ok()),
+            ],
+            "google" => vec![
+                ("GOOGLE_API_KEY", std::env::var("GOOGLE_API_KEY").is_ok())
+            ],
+            "azure" => vec![
+                ("AZURE_OPENAI_API_KEY", std::env::var("AZURE_OPENAI_API_KEY").is_ok()),
+                ("AZURE_OPENAI_ENDPOINT", std::env::var("AZURE_OPENAI_ENDPOINT").is_ok()),
+                ("AZURE_OPENAI_DEPLOYMENT", std::env::var("AZURE_OPENAI_DEPLOYMENT").is_ok()),
+            ],
+            _ => vec![],
+        };
+        
+        for (i, (var_name, is_set)) in env_vars.iter().enumerate() {
+            let prefix = if i == env_vars.len() - 1 { "└─" } else { "├─" };
+            let status = if *is_set { 
+                "Set ✓".bright_green() 
+            } else { 
+                "Not set ✗".bright_red() 
+            };
+            println!("  {} {:<25} {}", 
+                prefix.dimmed(),
+                var_name,
+                status
+            );
+        }
+        println!();
+        
+        // Config file location
+        if let Ok(config_path) = Config::config_path() {
+            println!("{}", "📁 Configuration File".bright_green().bold());
+            println!("  {} {}", 
+                "└─".dimmed(),
+                config_path.display().to_string().bright_white()
             );
             println!();
         }
