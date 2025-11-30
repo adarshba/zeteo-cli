@@ -71,4 +71,4 @@ zeteo-cli/
 
 ## License
 
-Contributions are licensed under the MIT License.
+Contributions are licensed under the MIT License. See [LICENSE](LICENSE) for details.

@@ -9,7 +9,7 @@ Zeteo is a command-line interface for interacting with AI language models. It pr
 ## Requirements
 
 - Rust 1.70 or later
-- An API key from a supported AI provider
+- An API key from one of the supported providers: OpenAI, Google AI, Azure OpenAI, or Vertex AI
 
 ## Installation
 
