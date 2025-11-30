@@ -6,63 +6,46 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
     Frame, Terminal,
 };
 use std::io;
 use std::sync::Arc;
-use std::time::Instant;
 
 use crate::providers::{AiProvider, ChatRequest, Message};
 
-#[derive(Debug, Clone, PartialEq)]
-enum InputMode {
-    Normal,
-    Editing,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum FocusedPanel {
-    Chat,
-    Logs,
-    Input,
+struct ChatMessage {
+    role: String,
+    content: String,
 }
 
 pub struct TuiApp {
     provider: Arc<dyn AiProvider>,
-    provider_name: String,
     input: String,
-    input_mode: InputMode,
-    focused_panel: FocusedPanel,
-    messages: Vec<Message>,
-    logs: Vec<String>,
-    status_message: String,
-    show_help: bool,
-    session_start: Instant,
+    cursor_position: usize,
+    messages: Vec<ChatMessage>,
+    scroll_offset: usize,
+    is_loading: bool,
+    show_welcome: bool,
 }
 
 impl TuiApp {
-    pub fn new(provider: Arc<dyn AiProvider>, provider_name: String) -> Self {
-        let status_msg = format!("Connected to AI provider: {}", provider_name);
+    pub fn new(provider: Arc<dyn AiProvider>) -> Self {
         Self {
             provider,
-            provider_name,
             input: String::new(),
-            input_mode: InputMode::Normal,
-            focused_panel: FocusedPanel::Input,
+            cursor_position: 0,
             messages: Vec::new(),
-            logs: Vec::new(),
-            status_message: status_msg,
-            show_help: false,
-            session_start: Instant::now(),
+            scroll_offset: 0,
+            is_loading: false,
+            show_welcome: true,
         }
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -71,7 +54,6 @@ impl TuiApp {
 
         let result = self.run_app(&mut terminal).await;
 
-        // Restore terminal
         disable_raw_mode()?;
         execute!(
             terminal.backend_mut(),
@@ -87,432 +69,362 @@ impl TuiApp {
         loop {
             terminal.draw(|f| self.ui(f))?;
 
-            if event::poll(std::time::Duration::from_millis(100))? {
+            if event::poll(std::time::Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
-                    match self.input_mode {
-                        InputMode::Normal => match key.code {
-                            KeyCode::Char('q') => {
-                                return Ok(());
-                            }
-                            KeyCode::Char('h') => {
-                                self.show_help = !self.show_help;
-                            }
-                            KeyCode::Char('i') => {
-                                self.input_mode = InputMode::Editing;
-                                self.focused_panel = FocusedPanel::Input;
-                            }
-                            KeyCode::Tab => {
-                                self.cycle_focus();
-                            }
-                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                return Ok(());
-                            }
-                            _ => {}
-                        },
-                        InputMode::Editing => match key.code {
-                            KeyCode::Enter => {
-                                let input = self.input.drain(..).collect::<String>();
-                                if !input.trim().is_empty() {
-                                    if let Err(e) = self.handle_input(input).await {
-                                        self.status_message = format!("Error: {}", e);
-                                    }
+                    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+                        return Ok(());
+                    }
+
+                    match key.code {
+                        KeyCode::Enter => {
+                            if !self.input.trim().is_empty() && !self.is_loading {
+                                self.show_welcome = false;
+                                let input = self.input.clone();
+                                self.input.clear();
+                                self.cursor_position = 0;
+                                
+                                if input.trim() == "/quit" || input.trim() == "/q" {
+                                    return Ok(());
                                 }
+                                
+                                if input.trim() == "/clear" {
+                                    self.messages.clear();
+                                    self.scroll_offset = 0;
+                                    continue;
+                                }
+                                
+                                if let Err(e) = self.send_message(input).await {
+                                    self.messages.push(ChatMessage {
+                                        role: "error".to_string(),
+                                        content: e.to_string(),
+                                    });
+                                }
+                                self.scroll_to_bottom();
                             }
-                            KeyCode::Char(c) => {
-                                self.input.push(c);
+                        }
+                        KeyCode::Char(c) => {
+                            self.input.insert(self.cursor_position, c);
+                            self.cursor_position += 1;
+                        }
+                        KeyCode::Backspace => {
+                            if self.cursor_position > 0 {
+                                self.cursor_position -= 1;
+                                self.input.remove(self.cursor_position);
                             }
-                            KeyCode::Backspace => {
-                                self.input.pop();
+                        }
+                        KeyCode::Delete => {
+                            if self.cursor_position < self.input.len() {
+                                self.input.remove(self.cursor_position);
                             }
-                            KeyCode::Esc => {
-                                self.input_mode = InputMode::Normal;
+                        }
+                        KeyCode::Left => {
+                            self.cursor_position = self.cursor_position.saturating_sub(1);
+                        }
+                        KeyCode::Right => {
+                            if self.cursor_position < self.input.len() {
+                                self.cursor_position += 1;
                             }
-                            _ => {}
-                        },
+                        }
+                        KeyCode::Home => {
+                            self.cursor_position = 0;
+                        }
+                        KeyCode::End => {
+                            self.cursor_position = self.input.len();
+                        }
+                        KeyCode::Up => {
+                            self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                        }
+                        KeyCode::Down => {
+                            self.scroll_offset = self.scroll_offset.saturating_add(1);
+                        }
+                        KeyCode::PageUp => {
+                            self.scroll_offset = self.scroll_offset.saturating_sub(10);
+                        }
+                        KeyCode::PageDown => {
+                            self.scroll_offset = self.scroll_offset.saturating_add(10);
+                        }
+                        KeyCode::Esc => {
+                            return Ok(());
+                        }
+                        _ => {}
                     }
                 }
             }
         }
     }
 
-    fn cycle_focus(&mut self) {
-        self.focused_panel = match self.focused_panel {
-            FocusedPanel::Chat => FocusedPanel::Logs,
-            FocusedPanel::Logs => FocusedPanel::Input,
-            FocusedPanel::Input => FocusedPanel::Chat,
-        };
-    }
-
-    async fn handle_input(&mut self, input: String) -> Result<()> {
-        // Handle commands
-        if input.starts_with('/') {
-            return self.handle_command(&input);
-        }
-
-        // Add user message
-        self.messages.push(Message {
+    async fn send_message(&mut self, input: String) -> Result<()> {
+        self.messages.push(ChatMessage {
             role: "user".to_string(),
             content: input.clone(),
         });
 
-        self.status_message = "Thinking...".to_string();
+        self.is_loading = true;
 
-        // Get AI response
+        let messages: Vec<Message> = self.messages
+            .iter()
+            .filter(|m| m.role == "user" || m.role == "assistant")
+            .map(|m| Message {
+                role: m.role.clone(),
+                content: m.content.clone(),
+            })
+            .collect();
+
         let request = ChatRequest {
-            messages: self.messages.clone(),
+            messages,
             temperature: Some(0.7),
-            max_tokens: Some(1000),
+            max_tokens: Some(4096),
         };
 
         let response = self.provider.chat(request).await?;
 
-        // Add AI response
-        self.messages.push(Message {
+        self.messages.push(ChatMessage {
             role: "assistant".to_string(),
             content: response.content,
         });
 
-        self.status_message = format!("Response received ({})", response.model);
-
+        self.is_loading = false;
         Ok(())
     }
 
-    fn handle_command(&mut self, command: &str) -> Result<()> {
-        match command.trim() {
-            "/clear" => {
-                self.messages.clear();
-                self.status_message = "Conversation cleared".to_string();
-            }
-            "/logs" => {
-                self.focused_panel = FocusedPanel::Logs;
-                self.status_message = "Switched to logs panel".to_string();
-            }
-            "/help" => {
-                self.show_help = !self.show_help;
-            }
-            _ => {
-                self.status_message = format!("Unknown command: {}", command);
-            }
-        }
-        Ok(())
+    fn scroll_to_bottom(&mut self) {
+        self.scroll_offset = self.messages.len().saturating_sub(1);
     }
 
     fn ui(&self, f: &mut Frame) {
-        if self.show_help {
-            self.render_help(f);
-            return;
-        }
-
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),      // Title
-                Constraint::Min(10),        // Main content
-                Constraint::Length(3),      // Input
-                Constraint::Length(3),      // Status
+                Constraint::Length(2),
+                Constraint::Min(1),
+                Constraint::Length(3),
             ])
             .split(f.size());
 
-        // Title
-        self.render_title(f, chunks[0]);
-
-        // Main content (split into chat and logs)
-        let main_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(60),  // Chat
-                Constraint::Percentage(40),  // Logs
-            ])
-            .split(chunks[1]);
-
-        self.render_chat(f, main_chunks[0]);
-        self.render_logs(f, main_chunks[1]);
-
-        // Input
+        self.render_header(f, chunks[0]);
+        self.render_chat(f, chunks[1]);
         self.render_input(f, chunks[2]);
-
-        // Status
-        self.render_status(f, chunks[3]);
     }
 
-    fn render_title(&self, f: &mut Frame, area: Rect) {
-        let provider_icon = match self.provider_name.to_lowercase().as_str() {
-            "openai" => "🤖",
-            "vertex" => "🔷",
-            "google" => "🔵",
-            "azure" => "☁️",
-            _ => "✨",
-        };
+    fn render_header(&self, f: &mut Frame, area: Rect) {
+        let header = Paragraph::new(Line::from(vec![
+            Span::styled("●", Style::default().fg(Color::Rgb(0, 122, 255))),
+            Span::styled("  zeteo", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        ]))
+        .alignment(Alignment::Center);
 
-        let title = Paragraph::new(format!(
-            "ZETEO - TUI Mode {} Provider: {} | Press 'h' for help, 'q' to quit",
-            provider_icon, self.provider_name
-        ))
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-        .block(Block::default().borders(Borders::ALL));
-
-        f.render_widget(title, area);
+        f.render_widget(header, area);
     }
 
     fn render_chat(&self, f: &mut Frame, area: Rect) {
-        let is_focused = self.focused_panel == FocusedPanel::Chat;
-        let border_style = if is_focused {
-            Style::default().fg(Color::Yellow)
-        } else {
-            Style::default()
+        if self.show_welcome && self.messages.is_empty() {
+            self.render_welcome(f, area);
+            return;
+        }
+
+        let inner = Rect {
+            x: area.x + 4,
+            y: area.y,
+            width: area.width.saturating_sub(8),
+            height: area.height,
         };
 
-        let messages: Vec<ListItem> = self
-            .messages
-            .iter()
-            .map(|m| {
-                let icon = if m.role == "user" { "👤" } else { "🤖" };
-                let style = if m.role == "user" {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default().fg(Color::Blue)
-                };
+        let mut lines: Vec<Line> = Vec::new();
+        
+        for msg in &self.messages {
+            match msg.role.as_str() {
+                "user" => {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(vec![
+                        Span::styled("You", Style::default().fg(Color::Rgb(142, 142, 147)).add_modifier(Modifier::BOLD)),
+                    ]));
+                    for line in msg.content.lines() {
+                        for wrapped in wrap_text(line, inner.width.saturating_sub(2) as usize) {
+                            lines.push(Line::from(Span::styled(wrapped, Style::default().fg(Color::White))));
+                        }
+                    }
+                }
+                "assistant" => {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(vec![
+                        Span::styled("Zeteo", Style::default().fg(Color::Rgb(0, 122, 255)).add_modifier(Modifier::BOLD)),
+                    ]));
+                    for line in msg.content.lines() {
+                        for wrapped in wrap_text(line, inner.width.saturating_sub(2) as usize) {
+                            lines.push(Line::from(Span::styled(wrapped, Style::default().fg(Color::Rgb(229, 229, 234)))));
+                        }
+                    }
+                }
+                "error" => {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(Span::styled(&msg.content, Style::default().fg(Color::Rgb(255, 69, 58)))));
+                }
+                _ => {}
+            }
+        }
 
-                let content = if m.content.len() > 100 {
-                    format!("{}: {}...", icon, &m.content[..97])
-                } else {
-                    format!("{}: {}", icon, m.content)
-                };
+        if self.is_loading {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("Zeteo", Style::default().fg(Color::Rgb(0, 122, 255)).add_modifier(Modifier::BOLD)),
+            ]));
+            lines.push(Line::from(Span::styled("...", Style::default().fg(Color::Rgb(142, 142, 147)))));
+        }
 
-                ListItem::new(Line::from(Span::styled(content, style)))
-            })
-            .collect();
+        let total = lines.len();
+        let visible = inner.height as usize;
+        let max_scroll = total.saturating_sub(visible);
+        let scroll = self.scroll_offset.min(max_scroll);
 
-        let list = List::new(messages)
-            .block(
-                Block::default()
-                    .title(format!(" Chat ({} messages) ", self.messages.len()))
-                    .borders(Borders::ALL)
-                    .border_style(border_style),
-            );
+        let chat = Paragraph::new(lines).scroll((scroll as u16, 0));
+        f.render_widget(chat, inner);
 
-        f.render_widget(list, area);
+        if total > visible {
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None)
+                .track_symbol(Some(" "))
+                .thumb_symbol("│");
+            
+            let mut state = ScrollbarState::new(max_scroll).position(scroll);
+            f.render_stateful_widget(scrollbar, area, &mut state);
+        }
     }
 
-    fn render_logs(&self, f: &mut Frame, area: Rect) {
-        let is_focused = self.focused_panel == FocusedPanel::Logs;
-        let border_style = if is_focused {
-            Style::default().fg(Color::Yellow)
-        } else {
-            Style::default()
+    fn render_welcome(&self, f: &mut Frame, area: Rect) {
+        let center_y = area.height / 2;
+        
+        let welcome = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("●", Style::default().fg(Color::Rgb(0, 122, 255))),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled("How can I help you today?", Style::default().fg(Color::Rgb(142, 142, 147)))),
+        ])
+        .alignment(Alignment::Center);
+
+        let welcome_area = Rect {
+            x: area.x,
+            y: area.y + center_y.saturating_sub(2),
+            width: area.width,
+            height: 5,
         };
 
-        let log_items: Vec<ListItem> = if self.logs.is_empty() {
-            vec![ListItem::new(Line::from(Span::styled(
-                "No logs available. Use MCP server to query logs.",
-                Style::default().fg(Color::DarkGray),
-            )))]
-        } else {
-            self.logs
-                .iter()
-                .map(|log| {
-                    ListItem::new(Line::from(Span::styled(
-                        log.clone(),
-                        Style::default().fg(Color::White),
-                    )))
-                })
-                .collect()
-        };
-
-        let list = List::new(log_items)
-            .block(
-                Block::default()
-                    .title(format!(" Logs ({}) ", self.logs.len()))
-                    .borders(Borders::ALL)
-                    .border_style(border_style),
-            );
-
-        f.render_widget(list, area);
+        f.render_widget(welcome, welcome_area);
     }
 
     fn render_input(&self, f: &mut Frame, area: Rect) {
-        let is_focused = self.focused_panel == FocusedPanel::Input;
-        let border_style = if is_focused {
-            Style::default().fg(Color::Yellow)
+        let inner = Rect {
+            x: area.x + 4,
+            y: area.y,
+            width: area.width.saturating_sub(8),
+            height: area.height,
+        };
+
+        let display = if self.is_loading {
+            "...".to_string()
+        } else if self.input.is_empty() {
+            "Message".to_string()
         } else {
-            Style::default()
+            self.input.clone()
         };
 
-        let mode_indicator = match self.input_mode {
-            InputMode::Normal => " [NORMAL] Press 'i' to edit ",
-            InputMode::Editing => " [EDITING] Press ESC to exit, ENTER to send ",
+        let style = if self.input.is_empty() && !self.is_loading {
+            Style::default().fg(Color::Rgb(142, 142, 147))
+        } else {
+            Style::default().fg(Color::White)
         };
 
-        let input = Paragraph::new(self.input.as_str())
-            .style(Style::default().fg(Color::White))
+        let input = Paragraph::new(display)
+            .style(style)
             .block(
                 Block::default()
-                    .title(mode_indicator)
                     .borders(Borders::ALL)
-                    .border_style(border_style),
+                    .border_style(Style::default().fg(Color::Rgb(58, 58, 60)))
             );
 
-        f.render_widget(input, area);
-    }
+        f.render_widget(input, inner);
 
-    fn render_status(&self, f: &mut Frame, area: Rect) {
-        let elapsed = self.session_start.elapsed();
-        let duration = format!(
-            "{}h {}m {}s",
-            elapsed.as_secs() / 3600,
-            (elapsed.as_secs() % 3600) / 60,
-            elapsed.as_secs() % 60
-        );
-
-        let status = Paragraph::new(format!(
-            "Status: {} | Messages: {} | Session: {}",
-            self.status_message,
-            self.messages.len(),
-            duration
-        ))
-        .style(Style::default().fg(Color::Cyan))
-        .block(Block::default().borders(Borders::ALL));
-
-        f.render_widget(status, area);
-    }
-
-    fn render_help(&self, f: &mut Frame) {
-        let help_text = vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                "ZETEO TUI - Keyboard Shortcuts",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("q", Style::default().fg(Color::Yellow)),
-                Span::raw("        - Quit application"),
-            ]),
-            Line::from(vec![
-                Span::styled("h", Style::default().fg(Color::Yellow)),
-                Span::raw("        - Toggle this help screen"),
-            ]),
-            Line::from(vec![
-                Span::styled("i", Style::default().fg(Color::Yellow)),
-                Span::raw("        - Enter insert mode (edit input)"),
-            ]),
-            Line::from(vec![
-                Span::styled("ESC", Style::default().fg(Color::Yellow)),
-                Span::raw("      - Exit insert mode"),
-            ]),
-            Line::from(vec![
-                Span::styled("Tab", Style::default().fg(Color::Yellow)),
-                Span::raw("      - Cycle focus between panels"),
-            ]),
-            Line::from(vec![
-                Span::styled("Enter", Style::default().fg(Color::Yellow)),
-                Span::raw("    - Send message (in insert mode)"),
-            ]),
-            Line::from(vec![
-                Span::styled("Ctrl+C", Style::default().fg(Color::Yellow)),
-                Span::raw("   - Force quit"),
-            ]),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Commands (type in input):",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("/clear", Style::default().fg(Color::Yellow)),
-                Span::raw("   - Clear conversation history"),
-            ]),
-            Line::from(vec![
-                Span::styled("/logs", Style::default().fg(Color::Yellow)),
-                Span::raw("    - Switch focus to logs panel"),
-            ]),
-            Line::from(vec![
-                Span::styled("/help", Style::default().fg(Color::Yellow)),
-                Span::raw("    - Toggle this help screen"),
-            ]),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Press 'h' again to close help",
-                Style::default().fg(Color::DarkGray),
-            )),
-        ];
-
-        let help = Paragraph::new(help_text)
-            .block(
-                Block::default()
-                    .title(" Help ")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Green)),
-            )
-            .wrap(Wrap { trim: true });
-
-        let area = centered_rect(80, 80, f.size());
-        f.render_widget(help, area);
+        if !self.is_loading && !self.input.is_empty() {
+            let cursor_x = inner.x + 1 + self.cursor_position as u16;
+            let cursor_y = inner.y + 1;
+            if cursor_x < inner.x + inner.width - 1 {
+                f.set_cursor(cursor_x, cursor_y);
+            }
+        }
     }
 }
 
-// Helper function to create a centered rectangle
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    if width == 0 || text.is_empty() {
+        return vec![text.to_string()];
+    }
+    
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    
+    for word in text.split_whitespace() {
+        if current.is_empty() {
+            current = word.to_string();
+        } else if current.len() + 1 + word.len() <= width {
+            current.push(' ');
+            current.push_str(word);
+        } else {
+            lines.push(current);
+            current = word.to_string();
+        }
+    }
+    
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    
+    lines
+}
 
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
+fn try_provider(name: &str) -> Option<Arc<dyn AiProvider>> {
+    match name {
+        "openai" => {
+            let key = std::env::var("OPENAI_API_KEY").ok()?;
+            Some(Arc::new(crate::providers::OpenAiProvider::new(key, None)))
+        }
+        "google" => {
+            let key = std::env::var("GOOGLE_API_KEY").ok()?;
+            Some(Arc::new(crate::providers::GoogleProvider::new(key, None)))
+        }
+        "azure" => {
+            let key = std::env::var("AZURE_OPENAI_API_KEY").ok()?;
+            let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT").ok()?;
+            let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT").ok()?;
+            Some(Arc::new(crate::providers::AzureProvider::new(key, endpoint, deployment)))
+        }
+        "vertex" => {
+            let project = std::env::var("GOOGLE_CLOUD_PROJECT").ok()?;
+            let location = std::env::var("GOOGLE_CLOUD_LOCATION").unwrap_or_else(|_| "us-central1".to_string());
+            Some(Arc::new(crate::providers::VertexProvider::new(project, location, None)))
+        }
+        _ => None,
+    }
+}
+
+fn find_provider() -> Option<Arc<dyn AiProvider>> {
+    ["openai", "google", "azure", "vertex"]
+        .iter()
+        .find_map(|p| try_provider(p))
 }
 
 pub async fn create_tui_session(provider: Option<String>) -> Result<TuiApp> {
-    let provider_name = provider.unwrap_or_else(|| "openai".to_string());
-    
-    let provider: Arc<dyn AiProvider> = match provider_name.to_lowercase().as_str() {
-        "openai" => {
-            let api_key = std::env::var("OPENAI_API_KEY")
-                .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY not set"))?;
-            Arc::new(crate::providers::OpenAiProvider::new(api_key, None))
-        }
-        "vertex" => {
-            let project_id = std::env::var("GOOGLE_CLOUD_PROJECT")
-                .map_err(|_| anyhow::anyhow!("GOOGLE_CLOUD_PROJECT not set"))?;
-            let location = std::env::var("GOOGLE_CLOUD_LOCATION")
-                .unwrap_or_else(|_| "us-central1".to_string());
-            Arc::new(crate::providers::VertexProvider::new(project_id, location, None))
-        }
-        "google" => {
-            let api_key = std::env::var("GOOGLE_API_KEY")
-                .map_err(|_| anyhow::anyhow!("GOOGLE_API_KEY not set"))?;
-            Arc::new(crate::providers::GoogleProvider::new(api_key, None))
-        }
-        "azure" => {
-            let api_key = std::env::var("AZURE_OPENAI_API_KEY")
-                .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_API_KEY not set"))?;
-            let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT")
-                .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_ENDPOINT not set"))?;
-            let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT")
-                .map_err(|_| anyhow::anyhow!("AZURE_OPENAI_DEPLOYMENT not set"))?;
-            Arc::new(crate::providers::AzureProvider::new(api_key, endpoint, deployment))
-        }
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Unknown provider: {}. Supported: openai, vertex, google, azure",
-                provider_name
-            ));
-        }
+    let provider = match provider {
+        Some(name) => try_provider(&name.to_lowercase())
+            .ok_or_else(|| anyhow::anyhow!("Provider '{}' not configured", name))?,
+        None => find_provider()
+            .ok_or_else(|| anyhow::anyhow!("No provider configured"))?,
     };
 
-    Ok(TuiApp::new(provider, provider_name))
+    Ok(TuiApp::new(provider))
 }
