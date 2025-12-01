@@ -38,6 +38,14 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
     SlashCommand { name: "resume", description: "Resume a previous conversation", shortcut: Some("r") },
 ];
 
+/// Commands that can be auto-executed without arguments
+const AUTO_EXECUTE_COMMANDS: &[&str] = &["quit", "clear", "help"];
+
+/// Check if a command should be auto-executed (doesn't require arguments)
+fn is_auto_execute_command(cmd: &str) -> bool {
+    AUTO_EXECUTE_COMMANDS.contains(&cmd)
+}
+
 // Markdown rendering support
 mod markdown {
     use ratatui::{
@@ -489,8 +497,8 @@ impl TuiApp {
                                         self.input = format!("/{}", cmd_name);
                                         self.cursor_position = self.input.len();
                                         
-                                        // Auto-execute simple commands
-                                        if cmd_name == "quit" || cmd_name == "clear" || cmd_name == "help" {
+                                        // Auto-execute simple commands that don't require arguments
+                                        if is_auto_execute_command(&cmd_name) {
                                             if let Some(result) = self.execute_slash_command(&self.input.clone()).await {
                                                 if result == "quit" {
                                                     return Ok(());
@@ -777,7 +785,7 @@ impl TuiApp {
                         role: "assistant".to_string(),
                         content: format!(
                             "## Index Pattern\n\nCurrent: **{}**\n\n*Usage: `/index <pattern>` to change for this session*\n\n*Example: `/index logs-prod-*`*",
-                            current_index.unwrap_or("not set".to_string())
+                            current_index.as_deref().unwrap_or("not set")
                         ),
                         tool_calls: None,
                         tool_call_id: None,
@@ -1524,6 +1532,8 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+/// Formats a Unix timestamp (seconds since epoch) as a human-readable relative time string.
+/// Returns strings like "just now", "5m ago", "2h ago", or "3d ago".
 fn format_time_ago(timestamp: i64) -> String {
     let now = chrono::Utc::now().timestamp();
     let diff = now - timestamp;

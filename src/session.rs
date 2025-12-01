@@ -66,8 +66,8 @@ impl SessionStore {
         
         // Update session list
         let title = if let Some(first_msg) = messages.iter().find(|m| m.role == "user") {
-            let title = first_msg.content.chars().take(50).collect::<String>();
-            if first_msg.content.len() > 50 {
+            let title: String = first_msg.content.chars().take(50).collect();
+            if first_msg.content.chars().count() > 50 {
                 format!("{}...", title)
             } else {
                 title
@@ -76,11 +76,12 @@ impl SessionStore {
             "New conversation".to_string()
         };
         
+        let now = chrono::Utc::now().timestamp();
         let info = ConversationInfo {
             id: self.current_session_id.clone(),
             title,
-            created_at: chrono::Utc::now().timestamp(),
-            updated_at: chrono::Utc::now().timestamp(),
+            created_at: now,
+            updated_at: now,
             message_count: messages.len(),
         };
         
