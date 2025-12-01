@@ -18,6 +18,9 @@ tag-message = "Release {{version}}"
 verify = true
 owners = []
 
+# Git commit message
+commit-message = "chore(release): bump version to {{version}}"
+
 # Changelog settings
 [changelog]
 # Generate changelog from conventional commits
@@ -27,9 +30,3 @@ changelogs = ["CHANGELOG.md"]
 [pre-release-replacements]
 # Update version references in other files if needed
 # Currently handled by version-bump workflow
-
-# Git settings
-[git]
-push = true
-tag = true
-commit-message = "chore(release): bump version to {{version}}"
