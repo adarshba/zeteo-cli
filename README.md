@@ -91,7 +91,11 @@ Set credentials via environment variables or a `.env` file:
 
 ### Log Backends
 
-Configure backends in `config.json`:
+Configure backends in `config.json`. The config file is searched in the following order:
+
+1. `./config.json` (current directory)
+2. Next to the zeteo executable
+3. `~/.config/zeteo/config.json` (Linux/macOS) or `%APPDATA%\zeteo\config.json` (Windows)
 
 ```json
 {
@@ -169,13 +173,14 @@ zeteo --provider openai --backend kibana
 
 ### Keyboard Controls
 
-| Key          | Action                  |
-| ------------ | ----------------------- |
-| Enter        | Send message            |
-| Esc          | Exit application        |
-| Up/Down      | Scroll through messages |
-| Page Up/Down | Scroll by page          |
-| Ctrl+C       | Force exit              |
+| Key          | Action                             |
+| ------------ | ---------------------------------- |
+| Enter        | Send message                       |
+| Esc          | Exit application                   |
+| Up/Down      | Scroll through messages            |
+| Page Up/Down | Scroll by page                     |
+| Ctrl+Y       | Copy last AI response to clipboard |
+| Ctrl+C       | Force exit                         |
 
 ### Slash Commands
 
@@ -184,6 +189,7 @@ zeteo --provider openai --backend kibana
 | `/help`    | `/h`     | Show available commands               |
 | `/quit`    | `/q`     | Exit the application                  |
 | `/clear`   | `/c`     | Clear current session history         |
+| `/copy`    | `/y`     | Copy last AI response to clipboard    |
 | `/backend` | `/b`     | Switch log backend                    |
 | `/index`   | `/i`     | Change index pattern for this session |
 | `/resume`  | `/r`     | Resume a previous conversation        |

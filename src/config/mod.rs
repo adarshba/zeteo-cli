@@ -119,7 +119,7 @@ impl Config {
         }
 
         let config_dir = dirs::config_dir().context("Could not determine config directory")?;
-        Ok(config_dir.join("zeteo-cli").join("config.json"))
+        Ok(config_dir.join("zeteo").join("config.json"))
     }
 
     /// Returns all possible config paths for documentation/debugging
@@ -134,7 +134,7 @@ impl Config {
         }
 
         if let Some(config_dir) = dirs::config_dir() {
-            paths.push(config_dir.join("zeteo-cli").join("config.json"));
+            paths.push(config_dir.join("zeteo").join("config.json"));
         }
 
         paths

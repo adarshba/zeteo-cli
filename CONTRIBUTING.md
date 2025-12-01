@@ -30,6 +30,29 @@ cargo clippy
 cargo fmt --check
 ```
 
+## Pre-commit Hooks
+
+Set up pre-commit hooks to automatically run checks before each commit.
+
+### Using the setup script
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+### Manual installation
+
+```bash
+cp hooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+The pre-commit hook runs:
+
+- `cargo fmt --check` - Format checking
+- `cargo clippy` - Linting
+- `cargo check` - Build verification
+
 ## Project Structure
 
 ```

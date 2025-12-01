@@ -1,6 +1,9 @@
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyCode, KeyModifiers,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -43,6 +46,11 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         shortcut: Some("c"),
     },
     SlashCommand {
+        name: "copy",
+        description: "Copy last AI response to clipboard",
+        shortcut: Some("y"),
+    },
+    SlashCommand {
         name: "help",
         description: "Show available commands",
         shortcut: Some("h"),
@@ -65,7 +73,7 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
 ];
 
 /// Commands that can be auto-executed without arguments
-const AUTO_EXECUTE_COMMANDS: &[&str] = &["quit", "clear", "help", "resume"];
+const AUTO_EXECUTE_COMMANDS: &[&str] = &["quit", "clear", "help", "resume", "copy"];
 
 /// Check if a command should be auto-executed (doesn't require arguments)
 fn is_auto_execute_command(cmd: &str) -> bool {
@@ -477,7 +485,12 @@ impl TuiApp {
     pub async fn run(&mut self) -> Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
@@ -487,7 +500,8 @@ impl TuiApp {
         execute!(
             terminal.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture
+            DisableMouseCapture,
+            DisableBracketedPaste
         )?;
         terminal.show_cursor()?;
 
@@ -516,6 +530,14 @@ impl TuiApp {
                             && key.code == KeyCode::Char('c')
                         {
                             return Ok(());
+                        }
+
+                        // Ctrl+Y to copy last AI response
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && key.code == KeyCode::Char('y')
+                        {
+                            self.copy_last_response();
+                            continue;
                         }
 
                         if self.show_slash_modal {
@@ -749,6 +771,15 @@ impl TuiApp {
                         }
                         _ => {}
                     },
+                    Event::Paste(text) => {
+                        // Handle pasted text - replace newlines with spaces for single-line input
+                        // or keep them if we want multi-line support
+                        let cleaned_text = text.replace('\r', "").replace('\n', " ");
+                        for c in cleaned_text.chars() {
+                            self.input.insert(self.cursor_position, c);
+                            self.cursor_position += 1;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -882,6 +913,46 @@ impl TuiApp {
                     Some("resume_no_redis".to_string())
                 }
             }
+            "copy" | "y" => {
+                if let Some(content) = self.get_last_assistant_response() {
+                    match arboard::Clipboard::new() {
+                        Ok(mut clipboard) => {
+                            match clipboard.set_text(&content) {
+                                Ok(_) => {
+                                    self.status_message = Some("Copied to clipboard".to_string());
+                                    Some("copied".to_string())
+                                }
+                                Err(e) => {
+                                    self.messages.push(ChatMessage {
+                                        role: "error".to_string(),
+                                        content: format!("Failed to copy: {}", e),
+                                        tool_calls: None,
+                                        tool_call_id: None,
+                                    });
+                                    Some("copy_error".to_string())
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.messages.push(ChatMessage {
+                                role: "error".to_string(),
+                                content: format!("Clipboard not available: {}", e),
+                                tool_calls: None,
+                                tool_call_id: None,
+                            });
+                            Some("clipboard_error".to_string())
+                        }
+                    }
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: "No AI response to copy yet.".to_string(),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    });
+                    Some("copy_empty".to_string())
+                }
+            }
             "backend" | "b" => {
                 if args.is_empty() {
                     let backends_list = if self.available_backends.is_empty() {
@@ -960,6 +1031,38 @@ impl TuiApp {
             }
         }
         false
+    }
+
+    /// Get the last assistant response content
+    fn get_last_assistant_response(&self) -> Option<String> {
+        self.messages
+            .iter()
+            .rev()
+            .find(|m| m.role == "assistant")
+            .map(|m| m.content.clone())
+    }
+
+    /// Copy the last assistant response to clipboard
+    fn copy_last_response(&mut self) {
+        if let Some(content) = self.get_last_assistant_response() {
+            match arboard::Clipboard::new() {
+                Ok(mut clipboard) => {
+                    match clipboard.set_text(&content) {
+                        Ok(_) => {
+                            self.status_message = Some("Copied to clipboard".to_string());
+                        }
+                        Err(e) => {
+                            self.status_message = Some(format!("Failed to copy: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.status_message = Some(format!("Clipboard not available: {}", e));
+                }
+            }
+        } else {
+            self.status_message = Some("No AI response to copy".to_string());
+        }
     }
 
     /// Get the current index pattern (session override or from config)
