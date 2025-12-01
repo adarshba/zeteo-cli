@@ -11,7 +11,7 @@ use serde_json::json;
 
 #[test]
 fn test_mcp_request_serialization() {
-    let request = zeteo_cli::mcp::McpRequest {
+    let request = zeteo::mcp::McpRequest {
         jsonrpc: "2.0".to_string(),
         id: 1,
         method: "initialize".to_string(),
@@ -45,7 +45,7 @@ fn test_mcp_response_deserialization_success() {
         }
     }"#;
     
-    let response: zeteo_cli::mcp::McpResponse = serde_json::from_str(json).unwrap();
+    let response: zeteo::mcp::McpResponse = serde_json::from_str(json).unwrap();
     assert_eq!(response.jsonrpc, "2.0");
     assert_eq!(response.id, 1);
     assert!(response.result.is_some());
@@ -66,7 +66,7 @@ fn test_mcp_response_deserialization_error() {
         }
     }"#;
     
-    let response: zeteo_cli::mcp::McpResponse = serde_json::from_str(json).unwrap();
+    let response: zeteo::mcp::McpResponse = serde_json::from_str(json).unwrap();
     assert_eq!(response.jsonrpc, "2.0");
     assert_eq!(response.id, 1);
     assert!(response.result.is_none());
@@ -79,7 +79,7 @@ fn test_mcp_response_deserialization_error() {
 
 #[test]
 fn test_tool_call_request_format() {
-    let request = zeteo_cli::mcp::McpRequest {
+    let request = zeteo::mcp::McpRequest {
         jsonrpc: "2.0".to_string(),
         id: 2,
         method: "tools/call".to_string(),
@@ -113,7 +113,7 @@ fn test_log_entry_parsing() {
         }
     });
     
-    let log: zeteo_cli::logs::LogEntry = serde_json::from_value(log_json).unwrap();
+    let log: zeteo::logs::LogEntry = serde_json::from_value(log_json).unwrap();
     assert_eq!(log.timestamp, "2024-01-01T00:00:00Z");
     assert_eq!(log.level, "ERROR");
     assert_eq!(log.message, "Test error message");
@@ -125,7 +125,7 @@ fn test_log_entry_parsing() {
 #[test]
 fn test_log_aggregation() {
     let logs = vec![
-        zeteo_cli::logs::LogEntry {
+        zeteo::logs::LogEntry {
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             level: "ERROR".to_string(),
             message: "Error 1".to_string(),
@@ -133,7 +133,7 @@ fn test_log_aggregation() {
             trace_id: None,
             labels: std::collections::HashMap::new(),
         },
-        zeteo_cli::logs::LogEntry {
+        zeteo::logs::LogEntry {
             timestamp: "2024-01-01T00:01:00Z".to_string(),
             level: "ERROR".to_string(),
             message: "Error 2".to_string(),
@@ -141,7 +141,7 @@ fn test_log_aggregation() {
             trace_id: None,
             labels: std::collections::HashMap::new(),
         },
-        zeteo_cli::logs::LogEntry {
+        zeteo::logs::LogEntry {
             timestamp: "2024-01-01T00:02:00Z".to_string(),
             level: "WARN".to_string(),
             message: "Warning 1".to_string(),
@@ -151,7 +151,7 @@ fn test_log_aggregation() {
         },
     ];
     
-    let explorer = zeteo_cli::logs::LogExplorer::new("test-server".to_string());
+    let explorer = zeteo::logs::LogExplorer::new("test-server".to_string());
     let agg = explorer.aggregate_logs(&logs);
     
     assert_eq!(agg.total_count, 3);
@@ -167,7 +167,7 @@ fn test_config_serialization() {
     let mut servers = std::collections::HashMap::new();
     servers.insert(
         "test-server".to_string(),
-        zeteo_cli::config::McpServer {
+        zeteo::config::McpServer {
             command: "npx".to_string(),
             args: vec!["-y".to_string(), "test-server".to_string()],
             env: {
@@ -178,7 +178,7 @@ fn test_config_serialization() {
         },
     );
     
-    let config = zeteo_cli::config::Config { 
+    let config = zeteo::config::Config { 
         servers,
         backends: std::collections::HashMap::new(),
     };
@@ -193,7 +193,7 @@ fn test_config_serialization() {
 #[tokio::test]
 async fn test_log_filter_application() {
     let logs = vec![
-        zeteo_cli::logs::LogEntry {
+        zeteo::logs::LogEntry {
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             level: "ERROR".to_string(),
             message: "Database connection failed".to_string(),
@@ -201,7 +201,7 @@ async fn test_log_filter_application() {
             trace_id: None,
             labels: std::collections::HashMap::new(),
         },
-        zeteo_cli::logs::LogEntry {
+        zeteo::logs::LogEntry {
             timestamp: "2024-01-01T00:01:00Z".to_string(),
             level: "INFO".to_string(),
             message: "Request completed successfully".to_string(),
@@ -209,7 +209,7 @@ async fn test_log_filter_application() {
             trace_id: None,
             labels: std::collections::HashMap::new(),
         },
-        zeteo_cli::logs::LogEntry {
+        zeteo::logs::LogEntry {
             timestamp: "2024-01-01T00:02:00Z".to_string(),
             level: "ERROR".to_string(),
             message: "Timeout occurred".to_string(),

@@ -39,6 +39,18 @@ Zeteo is a command-line AI assistant that combines conversational AI with observ
 
 ## Installation
 
+### From crates.io (Recommended)
+
+```bash
+cargo install zeteo
+```
+
+To upgrade to the latest version:
+
+```bash
+cargo install zeteo --force
+```
+
 ### From Source
 
 1. Clone the repository:

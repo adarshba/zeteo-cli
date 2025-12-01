@@ -50,7 +50,7 @@ async fn test_mcp_client_connection() {
     let args = vec!["-y".to_string(), "otel-mcp-server".to_string()];
     
     // Try to create MCP client
-    match zeteo_cli::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
+    match zeteo::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
         Ok(mut client) => {
             println!("✓ MCP client created successfully");
             
@@ -83,7 +83,7 @@ async fn test_query_logs_basic() {
     let command = "npx";
     let args = vec!["-y".to_string(), "otel-mcp-server".to_string()];
     
-    match zeteo_cli::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
+    match zeteo::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
         Ok(mut client) => {
             match client.initialize() {
                 Ok(_) => {
@@ -135,7 +135,7 @@ async fn test_query_logs_with_error_filter() {
     let command = "npx";
     let args = vec!["-y".to_string(), "otel-mcp-server".to_string()];
     
-    match zeteo_cli::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
+    match zeteo::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
         Ok(mut client) => {
             match client.initialize() {
                 Ok(_) => {
@@ -193,7 +193,7 @@ async fn test_query_logs_with_specific_search() {
         "success",
     ];
     
-    match zeteo_cli::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
+    match zeteo::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
         Ok(mut client) => {
             match client.initialize() {
                 Ok(_) => {
@@ -241,7 +241,7 @@ async fn test_query_logs_different_limits() {
     
     let limits = vec![1, 5, 10, 20, 50];
     
-    match zeteo_cli::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
+    match zeteo::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
         Ok(mut client) => {
             match client.initialize() {
                 Ok(_) => {
@@ -291,14 +291,14 @@ async fn test_log_explorer_integration() {
     let mut servers = HashMap::new();
     servers.insert(
         SERVER_NAME.to_string(),
-        zeteo_cli::config::McpServer {
+        zeteo::config::McpServer {
             command: "npx".to_string(),
             args: vec!["-y".to_string(), "otel-mcp-server".to_string()],
             env: create_openobserve_config(),
         },
     );
     
-    let config = zeteo_cli::config::Config { 
+    let config = zeteo::config::Config { 
         servers,
         backends: std::collections::HashMap::new(),
     };
@@ -309,7 +309,7 @@ async fn test_log_explorer_integration() {
             println!("✓ Saved OpenObserve config");
             
             // Create LogExplorer
-            match zeteo_cli::logs::LogExplorer::new(SERVER_NAME.to_string()).with_mcp_client() {
+            match zeteo::logs::LogExplorer::new(SERVER_NAME.to_string()).with_mcp_client() {
                 Ok(explorer) => {
                     println!("✓ LogExplorer created and MCP client initialized");
                     
@@ -356,7 +356,7 @@ async fn test_error_handling_invalid_credentials() {
     let command = "npx";
     let args = vec!["-y".to_string(), "otel-mcp-server".to_string()];
     
-    match zeteo_cli::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
+    match zeteo::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
         Ok(mut client) => {
             match client.initialize() {
                 Ok(_) => {
@@ -394,7 +394,7 @@ async fn test_concurrent_queries() {
     let command = "npx";
     let args = vec!["-y".to_string(), "otel-mcp-server".to_string()];
     
-    match zeteo_cli::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
+    match zeteo::mcp::McpClient::new(command, &args, &env, SERVER_NAME.to_string()) {
         Ok(mut client) => {
             match client.initialize() {
                 Ok(_) => {
