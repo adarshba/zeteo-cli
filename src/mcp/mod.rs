@@ -50,6 +50,7 @@ pub struct McpClient {
     initialized: bool,
 }
 
+#[allow(dead_code)]
 impl McpClient {
     pub fn new(
         command: &str,

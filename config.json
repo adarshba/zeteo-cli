@@ -1,0 +1,22 @@
+{
+  "servers": {},
+  "backends": {
+    "openobserve": {
+      "type": "openobserve",
+      "url": "https://periscope.beta.breeze.in/openobserve",
+      "username": "support@breeze.in",
+      "password": "Breeze@123",
+      "organization": "default",
+      "stream": "default_v2",
+      "verify_ssl": false
+    },
+    "kibana": {
+      "type": "kibana",
+      "url": "https://kibana.sso.mum.breeze.juspay.net",
+      "auth_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiYXV0aGVudGljYXRlLm11bS5icmVlemUuanVzcGF5Lm5ldCIsImtpYmFuYS5zc28ubXVtLmJyZWV6ZS5qdXNwYXkubmV0Il0sImRhdGFicm9rZXJfcmVjb3JkX3ZlcnNpb24iOjI5MjQxNSwiZGF0YWJyb2tlcl9zZXJ2ZXJfdmVyc2lvbiI6MTAyMzMwNjg0OTc0MjY0MjgzMzAsImlhdCI6MTc2NDQwOTc4NywiaWRwX2lkIjoiREVSb25yZzh2SDIzd21NM0NYZFc0U3VBNjhlSlNZa1R4S0VYbzZHVG93Y1UiLCJpc3MiOiJhdXRoZW50aWNhdGUubXVtLmJyZWV6ZS5qdXNwYXkubmV0IiwianRpIjoiYjVhODYzYzUtZjA0MC00NjgzLWFhZmMtN2Y5YjExNDhjZjMwIiwic3ViIjoiMTE0OTE0ODg0MzQwOTI3ODQzNzM0In0.xHba0NG1Dq3u0RtfLXlTOZPH64xRBe_ZjR3_IXQp_P4",
+      "index_pattern": "breeze-v2*",
+      "verify_ssl": false,
+      "version": "7.10.2"
+    }
+  }
+}

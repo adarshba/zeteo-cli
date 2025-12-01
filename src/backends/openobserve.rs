@@ -42,30 +42,33 @@ impl OpenObserveClient {
     fn build_sql_query(&self, query: &LogQuery) -> String {
         let mut conditions = vec![];
 
-        // Add query text filter
+        // Add query text filter - search in body, payload, and other text fields
         if !query.query.is_empty() && query.query != "*" {
-            // OpenObserve supports SQL WHERE clauses
-            conditions.push(format!("({} LIKE '%{}%')", "log", query.query));
+            // OpenObserve uses body for main log message, payload for details
+            conditions.push(format!(
+                "(body LIKE '%{}%' OR payload LIKE '%{}%' OR service_name LIKE '%{}%')",
+                query.query, query.query, query.query
+            ));
         }
 
-        // Add level filter
+        // Add level filter - OpenObserve uses severity as a number
+        // 9-12 = INFO, 13-16 = WARN, 17-20 = ERROR, 21-24 = FATAL
         if let Some(level) = &query.level {
-            conditions.push(format!("level = '{}'", level));
+            let severity_condition = match level.to_uppercase().as_str() {
+                "ERROR" | "ERR" => "severity >= 17 AND severity <= 20",
+                "WARN" | "WARNING" => "severity >= 13 AND severity <= 16",
+                "INFO" => "severity >= 9 AND severity <= 12",
+                "DEBUG" => "severity >= 5 AND severity <= 8",
+                "TRACE" => "severity >= 1 AND severity <= 4",
+                "FATAL" | "CRITICAL" => "severity >= 21",
+                _ => "severity >= 1",
+            };
+            conditions.push(severity_condition.to_string());
         }
 
         // Add service filter
         if let Some(service) = &query.service {
-            conditions.push(format!("service_name = '{}'", service));
-        }
-
-        // Build time range condition
-        if query.start_time.is_some() || query.end_time.is_some() {
-            if let Some(start) = &query.start_time {
-                conditions.push(format!("_timestamp >= {}", Self::parse_timestamp(start)));
-            }
-            if let Some(end) = &query.end_time {
-                conditions.push(format!("_timestamp <= {}", Self::parse_timestamp(end)));
-            }
+            conditions.push(format!("service_name LIKE '%{}%'", service));
         }
 
         let where_clause = if conditions.is_empty() {
@@ -80,19 +83,44 @@ impl OpenObserveClient {
         )
     }
 
-    fn parse_timestamp(timestamp: &str) -> i64 {
-        // Try to parse ISO 8601 timestamp and convert to microseconds
-        // This is a simplified implementation
-        chrono::DateTime::parse_from_rfc3339(timestamp)
-            .map(|dt| dt.timestamp_micros())
-            .unwrap_or(0)
-    }
-
     fn parse_log_entry(&self, record: &serde_json::Value) -> Option<LogEntry> {
+        // Convert severity number to level string
+        let severity_num = record
+            .get("severity")
+            .and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64()))
+            .unwrap_or(9);
+        
+        let level = match severity_num {
+            1..=4 => "TRACE",
+            5..=8 => "DEBUG", 
+            9..=12 => "INFO",
+            13..=16 => "WARN",
+            17..=20 => "ERROR",
+            21..=24 => "FATAL",
+            _ => "INFO",
+        }.to_string();
+        
+        // Get message from body, then try payload for more detail
+        let body = record.get("body").and_then(|v| v.as_str()).unwrap_or("");
+        let event = record.get("event").and_then(|v| v.as_str()).unwrap_or("");
+        let payload = record.get("payload").and_then(|v| v.as_str());
+        
+        let message = if !body.is_empty() && body != "analytics" {
+            body.to_string()
+        } else if let Some(p) = payload {
+            // Truncate long payloads
+            if p.len() > 300 {
+                format!("[{}] {}...", event, &p[..300])
+            } else {
+                format!("[{}] {}", event, p)
+            }
+        } else {
+            format!("[{}] {}", event, body)
+        };
+
         Some(LogEntry {
             timestamp: record
                 .get("_timestamp")
-                .or_else(|| record.get("timestamp"))
                 .and_then(|v| v.as_i64())
                 .map(|ts| {
                     chrono::DateTime::from_timestamp_micros(ts)
@@ -100,17 +128,8 @@ impl OpenObserveClient {
                         .unwrap_or_default()
                 })
                 .unwrap_or_default(),
-            level: record
-                .get("level")
-                .and_then(|v| v.as_str())
-                .unwrap_or("INFO")
-                .to_uppercase(),
-            message: record
-                .get("log")
-                .or_else(|| record.get("message"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+            level,
+            message,
             service: record
                 .get("service_name")
                 .or_else(|| record.get("service"))
@@ -128,15 +147,35 @@ impl OpenObserveClient {
 #[async_trait]
 impl LogBackendClient for OpenObserveClient {
     async fn query_logs(&self, query: &LogQuery) -> Result<Vec<LogEntry>> {
+        // OpenObserve uses _search endpoint with type=logs
         let search_url = format!(
-            "{}/api/{}/{}/_search",
-            self.url, self.organization, self.stream
+            "{}/api/{}/_search?type=logs",
+            self.url, self.organization
         );
 
         let sql_query = self.build_sql_query(query);
+        
+        // Calculate time range for the query (in microseconds)
+        let now = chrono::Utc::now();
+        let start_time = query.start_time
+            .as_ref()
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+            .map(|dt| dt.timestamp_micros())
+            .unwrap_or_else(|| (now - chrono::Duration::hours(1)).timestamp_micros());
+        let end_time = query.end_time
+            .as_ref()
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+            .map(|dt| dt.timestamp_micros())
+            .unwrap_or_else(|| now.timestamp_micros());
+        
+        // OpenObserve expects nested query object for _search endpoint
         let body = json!({
             "query": {
-                "sql": sql_query
+                "sql": sql_query,
+                "start_time": start_time,
+                "end_time": end_time,
+                "from": 0,
+                "size": query.max_results
             }
         });
 
@@ -144,6 +183,7 @@ impl LogBackendClient for OpenObserveClient {
             .client
             .post(&search_url)
             .basic_auth(&self.username, Some(&self.password))
+            .header("Referer", format!("{}/web/logs?org_identifier={}", self.url, self.organization))
             .json(&body)
             .send()
             .await
@@ -164,10 +204,12 @@ impl LogBackendClient for OpenObserveClient {
             .await
             .context("Failed to parse OpenObserve response")?;
 
+        // OpenObserve returns hits in result.hits array
+        let empty_vec = vec![];
         let hits = result
             .get("hits")
             .and_then(|h| h.as_array())
-            .context("Invalid OpenObserve response format")?;
+            .unwrap_or(&empty_vec);
 
         Ok(hits.iter().filter_map(|hit| self.parse_log_entry(hit)).collect())
     }

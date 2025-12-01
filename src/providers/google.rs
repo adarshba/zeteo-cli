@@ -1,4 +1,4 @@
-use super::{AiProvider, ChatRequest, ChatResponse};
+use super::{AiProvider, ChatRequest, ChatResponse, Tool, ToolCall, FunctionCall};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,8 @@ struct GoogleRequest {
     contents: Vec<GoogleContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     generation_config: Option<GenerationConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<GoogleTool>>,
 }
 
 #[derive(Serialize)]
@@ -22,9 +24,36 @@ struct GoogleContent {
     parts: Vec<GooglePart>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+enum GooglePart {
+    Text { text: String },
+    FunctionCall { function_call: GoogleFunctionCall },
+    FunctionResponse { function_response: GoogleFunctionResponse },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct GoogleFunctionCall {
+    name: String,
+    args: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct GoogleFunctionResponse {
+    name: String,
+    response: serde_json::Value,
+}
+
 #[derive(Serialize)]
-struct GooglePart {
-    text: String,
+struct GoogleTool {
+    function_declarations: Vec<GoogleFunctionDeclaration>,
+}
+
+#[derive(Serialize)]
+struct GoogleFunctionDeclaration {
+    name: String,
+    description: String,
+    parameters: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -35,24 +64,26 @@ struct GenerationConfig {
     max_output_tokens: Option<u32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct GoogleResponse {
     candidates: Vec<GoogleCandidate>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct GoogleCandidate {
     content: GoogleResponseContent,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct GoogleResponseContent {
     parts: Vec<GoogleResponsePart>,
 }
 
-#[derive(Deserialize)]
-struct GoogleResponsePart {
-    text: String,
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum GoogleResponsePart {
+    Text { text: String },
+    FunctionCall { function_call: GoogleFunctionCall },
 }
 
 impl GoogleProvider {
@@ -63,6 +94,16 @@ impl GoogleProvider {
             client: reqwest::Client::new(),
         }
     }
+    
+    fn convert_tools(tools: &[Tool]) -> Vec<GoogleTool> {
+        vec![GoogleTool {
+            function_declarations: tools.iter().map(|t| GoogleFunctionDeclaration {
+                name: t.function.name.clone(),
+                description: t.function.description.clone(),
+                parameters: t.function.parameters.clone(),
+            }).collect(),
+        }]
+    }
 }
 
 #[async_trait::async_trait]
@@ -71,11 +112,37 @@ impl AiProvider for GoogleProvider {
         let contents: Vec<GoogleContent> = request
             .messages
             .iter()
-            .map(|m| GoogleContent {
-                role: if m.role == "assistant" { "model".to_string() } else { m.role.clone() },
-                parts: vec![GooglePart {
-                    text: m.content.clone(),
-                }],
+            .filter(|m| m.role != "system") // Google doesn't support system role directly
+            .map(|m| {
+                let role = match m.role.as_str() {
+                    "assistant" => "model".to_string(),
+                    "tool" => "function".to_string(),
+                    _ => m.role.clone(),
+                };
+                
+                let parts = if m.role == "tool" {
+                    // Tool response
+                    vec![GooglePart::FunctionResponse {
+                        function_response: GoogleFunctionResponse {
+                            name: m.tool_call_id.clone().unwrap_or_default(),
+                            response: serde_json::from_str(&m.content).unwrap_or(serde_json::json!({"result": m.content})),
+                        }
+                    }]
+                } else if let Some(tool_calls) = &m.tool_calls {
+                    // Assistant with function calls
+                    tool_calls.iter().map(|tc| {
+                        GooglePart::FunctionCall {
+                            function_call: GoogleFunctionCall {
+                                name: tc.function.name.clone(),
+                                args: serde_json::from_str(&tc.function.arguments).unwrap_or_default(),
+                            }
+                        }
+                    }).collect()
+                } else {
+                    vec![GooglePart::Text { text: m.content.clone() }]
+                };
+                
+                GoogleContent { role, parts }
             })
             .collect();
         
@@ -88,9 +155,12 @@ impl AiProvider for GoogleProvider {
             None
         };
         
+        let tools = request.tools.as_ref().map(|t| Self::convert_tools(t));
+        
         let google_request = GoogleRequest {
             contents,
             generation_config,
+            tools,
         };
         
         let url = format!(
@@ -116,16 +186,37 @@ impl AiProvider for GoogleProvider {
             .await
             .context("Failed to parse Google AI response")?;
         
-        let content = google_response
+        let candidate = google_response
             .candidates
             .first()
-            .and_then(|c| c.content.parts.first())
-            .map(|p| p.text.clone())
-            .context("No content in Google AI response")?;
+            .context("No candidates in Google AI response")?;
+        
+        // Extract text content and function calls
+        let mut content = String::new();
+        let mut tool_calls = Vec::new();
+        
+        for (idx, part) in candidate.content.parts.iter().enumerate() {
+            match part {
+                GoogleResponsePart::Text { text } => {
+                    content.push_str(text);
+                }
+                GoogleResponsePart::FunctionCall { function_call } => {
+                    tool_calls.push(ToolCall {
+                        id: format!("call_{}", idx),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: function_call.name.clone(),
+                            arguments: serde_json::to_string(&function_call.args).unwrap_or_default(),
+                        },
+                    });
+                }
+            }
+        }
         
         Ok(ChatResponse {
             content,
             model: self.model.clone(),
+            tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
         })
     }
     

@@ -10,14 +10,19 @@ mod logs;
 mod mcp;
 mod providers;
 mod retry;
+mod tools;
 mod tui;
 
 #[derive(Parser)]
 #[command(name = "zeteo")]
-#[command(author, version, about = "AI assistant", long_about = None)]
+#[command(author, version, about = "AI assistant with log analysis", long_about = None)]
 struct Cli {
     #[arg(short, long, global = true)]
     provider: Option<String>,
+    
+    /// Backend to use for log queries (kibana, openobserve)
+    #[arg(short, long, global = true)]
+    backend: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -47,7 +52,7 @@ async fn main() -> Result<()> {
             println!("zeteo {}", env!("CARGO_PKG_VERSION"));
         }
         None => {
-            let mut app = tui::create_tui_session(cli.provider).await?;
+            let mut app = tui::create_tui_session(cli.provider, cli.backend).await?;
             app.run().await?;
         }
     }

@@ -108,9 +108,44 @@ impl Config {
     }
     
     pub fn config_path() -> Result<PathBuf> {
+        // First, try to find config.json in the current directory (local repo)
+        let local_config = PathBuf::from("config.json");
+        if local_config.exists() {
+            return Ok(local_config);
+        }
+        
+        // Try relative to the executable
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let exe_config = exe_dir.join("config.json");
+                if exe_config.exists() {
+                    return Ok(exe_config);
+                }
+            }
+        }
+        
+        // Fall back to global config directory (~/.config/zeteo-cli/config.json)
         let config_dir = dirs::config_dir()
             .context("Could not determine config directory")?;
         Ok(config_dir.join("zeteo-cli").join("config.json"))
+    }
+    
+    /// Returns all possible config paths for documentation/debugging
+    #[allow(dead_code)]
+    pub fn all_config_paths() -> Vec<PathBuf> {
+        let mut paths = vec![PathBuf::from("config.json")];
+        
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                paths.push(exe_dir.join("config.json"));
+            }
+        }
+        
+        if let Some(config_dir) = dirs::config_dir() {
+            paths.push(config_dir.join("zeteo-cli").join("config.json"));
+        }
+        
+        paths
     }
     
     fn default_config() -> Self {

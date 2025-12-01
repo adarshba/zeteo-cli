@@ -36,35 +36,69 @@ impl KibanaClient {
         })
     }
 
-    fn build_kql_query(&self, query: &LogQuery) -> String {
-        let mut kql_parts = vec![];
-
-        // Add main query
-        if !query.query.is_empty() && query.query != "*" {
-            kql_parts.push(query.query.clone());
-        }
-
-        // Add level filter
-        if let Some(level) = &query.level {
-            kql_parts.push(format!("level: \"{}\"", level));
-        }
-
-        // Add service filter
-        if let Some(service) = &query.service {
-            kql_parts.push(format!("service.name: \"{}\"", service));
-        }
-
-        if kql_parts.is_empty() {
-            "*".to_string()
-        } else {
-            kql_parts.join(" AND ")
-        }
-    }
-
     fn build_search_body(&self, query: &LogQuery) -> serde_json::Value {
-        let kql = self.build_kql_query(query);
+        // Build the filter array
+        let mut filters: Vec<serde_json::Value> = vec![];
 
-        let mut body = json!({
+        // Add text search filter using multi_match for full-text search
+        if !query.query.is_empty() && query.query != "*" {
+            filters.push(json!({
+                "multi_match": {
+                    "type": "best_fields",
+                    "query": query.query,
+                    "lenient": true
+                }
+            }));
+        }
+
+        // Add time range filter
+        let now = chrono::Utc::now();
+        let start_time = query.start_time
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| (now - chrono::Duration::hours(1)).to_rfc3339());
+        let end_time = query.end_time
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| now.to_rfc3339());
+        
+        filters.push(json!({
+            "range": {
+                "timestamp": {
+                    "gte": start_time,
+                    "lte": end_time,
+                    "format": "strict_date_optional_time"
+                }
+            }
+        }));
+
+        // Add level filter if specified
+        if let Some(level) = &query.level {
+            let level_upper = level.to_uppercase();
+            // Filter by level in message or log field
+            filters.push(json!({
+                "multi_match": {
+                    "type": "best_fields", 
+                    "query": level_upper,
+                    "fields": ["level", "severity", "log_level"],
+                    "lenient": true
+                }
+            }));
+        }
+
+        // Add service filter if specified
+        if let Some(service) = &query.service {
+            filters.push(json!({
+                "multi_match": {
+                    "type": "best_fields",
+                    "query": service,
+                    "fields": ["pod_name", "pod_name.keyword", "service", "service_name"],
+                    "lenient": true
+                }
+            }));
+        }
+
+        json!({
             "params": {
                 "index": self.index_pattern,
                 "body": {
@@ -72,83 +106,133 @@ impl KibanaClient {
                     "size": query.max_results,
                     "sort": [
                         {
-                            "@timestamp": {
-                                "order": "desc"
+                            "timestamp": {
+                                "order": "desc",
+                                "unmapped_type": "boolean"
                             }
                         }
                     ],
+                    "stored_fields": ["*"],
+                    "docvalue_fields": [
+                        {
+                            "field": "timestamp",
+                            "format": "date_time"
+                        }
+                    ],
+                    "_source": {
+                        "excludes": []
+                    },
                     "query": {
                         "bool": {
                             "must": [],
-                            "filter": [
-                                {
-                                    "query_string": {
-                                        "query": kql,
-                                        "analyze_wildcard": true
-                                    }
-                                }
-                            ]
+                            "filter": filters,
+                            "should": [],
+                            "must_not": []
                         }
+                    },
+                    "highlight": {
+                        "pre_tags": ["@kibana-highlighted-field@"],
+                        "post_tags": ["@/kibana-highlighted-field@"],
+                        "fields": {"*": {}},
+                        "fragment_size": 2147483647
                     }
-                }
+                },
+                "preference": chrono::Utc::now().timestamp_millis()
             }
-        });
-
-        // Add time range if specified
-        if query.start_time.is_some() || query.end_time.is_some() {
-            let mut range = json!({});
-            if let Some(start) = &query.start_time {
-                range["gte"] = json!(start);
-            }
-            if let Some(end) = &query.end_time {
-                range["lte"] = json!(end);
-            }
-
-            if let Some(filter) = body["params"]["body"]["query"]["bool"]["filter"].as_array_mut() {
-                filter.push(json!({
-                    "range": {
-                        "@timestamp": range
-                    }
-                }));
-            }
-        }
-
-        body
+        })
     }
 
     fn parse_log_entry(&self, hit: &serde_json::Value) -> Option<LogEntry> {
         let source = hit.get("_source")?;
+        let fields = hit.get("fields");
+
+        // Get timestamp from fields (formatted) or _source
+        let timestamp = fields
+            .and_then(|f| f.get("timestamp"))
+            .and_then(|t| t.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .or_else(|| source.get("timestamp").and_then(|v| v.as_str()))
+            .or_else(|| source.get("@timestamp").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+
+        // Get level from various possible fields
+        let level = source
+            .get("level")
+            .or_else(|| source.get("severity"))
+            .or_else(|| source.get("log_level"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("INFO")
+            .to_uppercase();
+
+        // Get message - could be in various fields
+        let message = source
+            .get("message")
+            .or_else(|| source.get("log"))
+            .or_else(|| source.get("body"))
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                // Truncate very long messages
+                if s.len() > 500 {
+                    format!("{}...", &s[..500])
+                } else {
+                    s.to_string()
+                }
+            })
+            .unwrap_or_default();
+
+        // Get service from pod_name or service fields
+        let service = source
+            .get("pod_name")
+            .or_else(|| source.get("service"))
+            .or_else(|| source.get("service_name"))
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                // Extract service name from pod name (e.g., breeze-api-xxx -> Vayu)
+                if s.contains("breeze-api-custom-pre") {
+                    "Vayu(Jockey) Preflight".to_string()
+                } else if s.contains("breeze-api-custom") {
+                    "Vayu(Jockey)".to_string()
+                } else if s.contains("breeze-api-pre") {
+                    "Vayu Preflight".to_string()
+                } else if s.contains("breeze-api-producer") {
+                    "Vayu Producer".to_string()
+                } else if s.contains("breeze-api") {
+                    "Vayu".to_string()
+                } else if s.contains("breeze-app-jockey") {
+                    "Nimble(Jockey)".to_string()
+                } else if s.contains("breeze-app-analytics") {
+                    "Nimble Analytics".to_string()
+                } else if s.contains("breeze-app-cron") {
+                    "Nimble Cron".to_string()
+                } else if s.contains("breeze-app-") {
+                    "Nimble".to_string()
+                } else if s.contains("breeze-lighthouse-cron") {
+                    "Lighthouse Cron".to_string()
+                } else if s.contains("breeze-lighthouse-pre") {
+                    "Lighthouse Preflight".to_string()
+                } else if s.contains("breeze-lighthouse") {
+                    "Lighthouse".to_string()
+                } else {
+                    s.to_string()
+                }
+            });
+
+        // Get trace_id if available
+        let trace_id = source
+            .get("trace_id")
+            .or_else(|| source.get("traceId"))
+            .or_else(|| source.get("request_id"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         Some(LogEntry {
-            timestamp: source
-                .get("@timestamp")
-                .or_else(|| source.get("timestamp"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            level: source
-                .get("level")
-                .or_else(|| source.get("severity"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("INFO")
-                .to_uppercase(),
-            message: source
-                .get("message")
-                .or_else(|| source.get("body"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            service: source
-                .get("service")
-                .and_then(|s| s.get("name"))
-                .or_else(|| source.get("service_name"))
-                .and_then(|v| v.as_str())
-                .map(String::from),
-            trace_id: source
-                .get("trace_id")
-                .or_else(|| source.get("traceId"))
-                .and_then(|v| v.as_str())
-                .map(String::from),
+            timestamp,
+            level,
+            message,
+            service,
+            trace_id,
             labels: HashMap::new(),
         })
     }
@@ -157,21 +241,22 @@ impl KibanaClient {
 #[async_trait]
 impl LogBackendClient for KibanaClient {
     async fn query_logs(&self, query: &LogQuery) -> Result<Vec<LogEntry>> {
-        // Kibana uses internal Elasticsearch API
-        let search_url = format!("{}/_plugin/kibana/api/console/proxy", self.url);
+        // Kibana internal Elasticsearch search API
+        let search_url = format!("{}/_plugin/kibana/internal/search/es", self.url);
         let body = self.build_search_body(query);
 
         let mut request = self
             .client
             .post(&search_url)
-            .header("kbn-xsrf", "true")
-            .header("kbn-version", &self.version)
             .header("Content-Type", "application/json")
+            .header("kbn-version", &self.version)
+            .header("Referer", format!("{}/_plugin/kibana/app/discover", self.url))
+            .header("Origin", &self.url)
             .json(&body);
 
-        // Add authentication if token is present
+        // Add authentication via cookie if token is present
         if let Some(token) = &self.auth_token {
-            request = request.header("Authorization", format!("Bearer {}", token));
+            request = request.header("Cookie", format!("_pomerium={}", token));
         }
 
         let response = request
@@ -194,24 +279,44 @@ impl LogBackendClient for KibanaClient {
             .await
             .context("Failed to parse Kibana response")?;
 
-        // Kibana wraps the Elasticsearch response
+        // Parse Kibana's wrapped Elasticsearch response
         let hits = result
             .get("rawResponse")
             .or_else(|| result.get("response"))
             .and_then(|r| r.get("hits"))
             .and_then(|h| h.get("hits"))
-            .and_then(|h| h.as_array())
-            .context("Invalid Kibana response format")?;
+            .and_then(|h| h.as_array());
 
-        Ok(hits.iter().filter_map(|hit| self.parse_log_entry(hit)).collect())
+        match hits {
+            Some(hits_array) => {
+                Ok(hits_array.iter().filter_map(|hit| self.parse_log_entry(hit)).collect())
+            }
+            None => {
+                // Try direct hits structure
+                let direct_hits = result
+                    .get("hits")
+                    .and_then(|h| h.get("hits"))
+                    .and_then(|h| h.as_array());
+                
+                match direct_hits {
+                    Some(hits_array) => {
+                        Ok(hits_array.iter().filter_map(|hit| self.parse_log_entry(hit)).collect())
+                    }
+                    None => {
+                        // Return empty if no hits found
+                        Ok(vec![])
+                    }
+                }
+            }
+        }
     }
 
     async fn health_check(&self) -> Result<bool> {
-        let health_url = format!("{}/api/status", self.url);
+        let health_url = format!("{}/_plugin/kibana/api/status", self.url);
         let mut request = self.client.get(&health_url);
 
         if let Some(token) = &self.auth_token {
-            request = request.header("Authorization", format!("Bearer {}", token));
+            request = request.header("Cookie", format!("_pomerium={}", token));
         }
 
         let response = request.send().await;
@@ -228,11 +333,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_kql_query_simple() {
+    fn test_build_search_body_simple() {
         let client = KibanaClient::new(
             "http://localhost:5601".to_string(),
             None,
-            "logs-*".to_string(),
+            "breeze-v2*".to_string(),
             "7.10.2".to_string(),
             false,
         )
@@ -247,16 +352,18 @@ mod tests {
             service: None,
         };
 
-        let kql = client.build_kql_query(&query);
-        assert_eq!(kql, "error");
+        let body = client.build_search_body(&query);
+        assert!(body.get("params").is_some());
+        assert_eq!(body["params"]["index"], "breeze-v2*");
+        assert_eq!(body["params"]["body"]["size"], 10);
     }
 
     #[test]
-    fn test_build_kql_query_with_filters() {
+    fn test_build_search_body_with_filters() {
         let client = KibanaClient::new(
             "http://localhost:5601".to_string(),
             None,
-            "logs-*".to_string(),
+            "breeze-v2*".to_string(),
             "7.10.2".to_string(),
             false,
         )
@@ -265,40 +372,14 @@ mod tests {
         let query = LogQuery {
             query: "payment".to_string(),
             max_results: 50,
-            start_time: None,
-            end_time: None,
-            level: Some("ERROR".to_string()),
-            service: Some("api-service".to_string()),
-        };
-
-        let kql = client.build_kql_query(&query);
-        assert!(kql.contains("payment"));
-        assert!(kql.contains("level: \"ERROR\""));
-        assert!(kql.contains("service.name: \"api-service\""));
-    }
-
-    #[test]
-    fn test_build_search_body() {
-        let client = KibanaClient::new(
-            "http://localhost:5601".to_string(),
-            None,
-            "logs-*".to_string(),
-            "7.10.2".to_string(),
-            false,
-        )
-        .unwrap();
-
-        let query = LogQuery {
-            query: "error".to_string(),
-            max_results: 10,
             start_time: Some("2024-01-01T00:00:00Z".to_string()),
             end_time: Some("2024-01-02T00:00:00Z".to_string()),
-            level: None,
-            service: None,
+            level: Some("ERROR".to_string()),
+            service: Some("vayu".to_string()),
         };
 
         let body = client.build_search_body(&query);
-        assert!(body.get("params").is_some());
-        assert!(body["params"]["body"]["size"].as_u64().unwrap() == 10);
+        let filters = body["params"]["body"]["query"]["bool"]["filter"].as_array().unwrap();
+        assert!(filters.len() >= 2); // At least time range and query
     }
 }

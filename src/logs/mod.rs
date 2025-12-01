@@ -22,6 +22,7 @@ pub struct LogEntry {
     pub labels: HashMap<String, String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct LogFilter {
     pub level: Option<String>,
@@ -31,6 +32,7 @@ pub struct LogFilter {
     pub contains: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct LogAggregation {
     pub total_count: usize,
@@ -39,12 +41,14 @@ pub struct LogAggregation {
     pub time_range: Option<(String, String)>,
 }
 
+#[allow(dead_code)]
 pub struct LogExplorer {
     mcp_server: Option<String>,
     mcp_client: Option<McpClient>,
     backend_client: Option<Arc<dyn LogBackendClient>>,
 }
 
+#[allow(dead_code)]
 impl LogExplorer {
     pub fn new(mcp_server: String) -> Self {
         LogExplorer {

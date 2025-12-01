@@ -1,4 +1,4 @@
-use super::{AiProvider, ChatRequest, ChatResponse};
+use super::{AiProvider, ChatRequest, ChatResponse, Tool, ToolCall, FunctionCall};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -17,20 +17,41 @@ struct OpenAiRequest {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<Tool>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct OpenAiMessage {
     role: String,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<OpenAiToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct OpenAiToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: OpenAiFunctionCall,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct OpenAiFunctionCall {
+    name: String,
+    arguments: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct OpenAiResponse {
     choices: Vec<OpenAiChoice>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct OpenAiChoice {
     message: OpenAiMessage,
 }
@@ -53,7 +74,18 @@ impl AiProvider for OpenAiProvider {
             .iter()
             .map(|m| OpenAiMessage {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: if m.content.is_empty() { None } else { Some(m.content.clone()) },
+                tool_calls: m.tool_calls.as_ref().map(|tcs| {
+                    tcs.iter().map(|tc| OpenAiToolCall {
+                        id: tc.id.clone(),
+                        call_type: tc.call_type.clone(),
+                        function: OpenAiFunctionCall {
+                            name: tc.function.name.clone(),
+                            arguments: tc.function.arguments.clone(),
+                        },
+                    }).collect()
+                }),
+                tool_call_id: m.tool_call_id.clone(),
             })
             .collect();
         
@@ -62,6 +94,7 @@ impl AiProvider for OpenAiProvider {
             messages,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
+            tools: request.tools,
         };
         
         let response = self.client
@@ -73,22 +106,38 @@ impl AiProvider for OpenAiProvider {
             .await
             .context("Failed to send request to OpenAI")?;
         
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            anyhow::bail!("OpenAI API error: {}", error_text);
+        }
+        
         let openai_response: OpenAiResponse = response
             .json()
             .await
             .context("Failed to parse OpenAI response")?;
         
-        let content = openai_response
+        let choice = openai_response
             .choices
             .first()
-            .context("No choices in OpenAI response")?
-            .message
-            .content
-            .clone();
+            .context("No choices in OpenAI response")?;
+        
+        let content = choice.message.content.clone().unwrap_or_default();
+        
+        let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
+            tcs.iter().map(|tc| ToolCall {
+                id: tc.id.clone(),
+                call_type: tc.call_type.clone(),
+                function: FunctionCall {
+                    name: tc.function.name.clone(),
+                    arguments: tc.function.arguments.clone(),
+                },
+            }).collect()
+        });
         
         Ok(ChatResponse {
             content,
             model: self.model.clone(),
+            tool_calls,
         })
     }
     
