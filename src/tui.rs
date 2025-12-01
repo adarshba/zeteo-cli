@@ -65,7 +65,7 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
 ];
 
 /// Commands that can be auto-executed without arguments
-const AUTO_EXECUTE_COMMANDS: &[&str] = &["quit", "clear", "help"];
+const AUTO_EXECUTE_COMMANDS: &[&str] = &["quit", "clear", "help", "resume"];
 
 /// Check if a command should be auto-executed (doesn't require arguments)
 fn is_auto_execute_command(cmd: &str) -> bool {
@@ -556,16 +556,6 @@ impl TuiApp {
                                         } else if cmd_name == "index" {
                                             self.input = "/index ".to_string();
                                             self.cursor_position = self.input.len();
-                                        } else if cmd_name == "resume" {
-                                            if let Some(result) = self
-                                                .execute_slash_command(&format!("/{}", cmd_name))
-                                                .await
-                                            {
-                                                if result == "resume_modal" {
-                                                    self.input.clear();
-                                                    self.cursor_position = 0;
-                                                }
-                                            }
                                         }
                                     }
                                 }
@@ -836,6 +826,10 @@ impl TuiApp {
                 } else {
                     let new_pattern = args.join(" ");
                     self.session_index_pattern = Some(new_pattern.clone());
+                    // Update the tool executor with the new index pattern
+                    if let Some(ref mut executor) = self.tool_executor {
+                        executor.set_index_pattern(Some(new_pattern.clone()));
+                    }
                     self.messages.push(ChatMessage {
                         role: "assistant".to_string(),
                         content: format!(

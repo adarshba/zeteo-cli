@@ -144,7 +144,9 @@ impl ElasticsearchClient {
 #[async_trait]
 impl LogBackendClient for ElasticsearchClient {
     async fn query_logs(&self, query: &LogQuery) -> Result<Vec<LogEntry>> {
-        let search_url = format!("{}{}/_search", self.url, self.index_pattern);
+        // Use the index pattern from the query if provided, otherwise use the default
+        let index_pattern = query.index_pattern.as_deref().unwrap_or(&self.index_pattern);
+        let search_url = format!("{}{}/_search", self.url, index_pattern);
         let body = self.build_query(query);
 
         let mut request = self.client.post(&search_url).json(&body);
@@ -224,6 +226,7 @@ mod tests {
             end_time: None,
             level: None,
             service: None,
+            index_pattern: None,
         };
 
         let es_query = client.build_query(&query);
@@ -249,6 +252,7 @@ mod tests {
             end_time: Some("2024-01-02T00:00:00Z".to_string()),
             level: Some("ERROR".to_string()),
             service: Some("api-service".to_string()),
+            index_pattern: None,
         };
 
         let es_query = client.build_query(&query);

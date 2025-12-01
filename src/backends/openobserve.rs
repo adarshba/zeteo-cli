@@ -72,9 +72,12 @@ impl OpenObserveClient {
             format!("WHERE {}", conditions.join(" AND "))
         };
 
+        // Use the index pattern from the query if provided, otherwise use the default stream
+        let stream = query.index_pattern.as_deref().unwrap_or(&self.stream);
+
         format!(
             "SELECT * FROM \"{}\" {} ORDER BY _timestamp DESC LIMIT {}",
-            self.stream, where_clause, query.max_results
+            stream, where_clause, query.max_results
         )
     }
 
@@ -246,6 +249,7 @@ mod tests {
             end_time: None,
             level: None,
             service: None,
+            index_pattern: None,
         };
 
         let sql = client.build_sql_query(&query);
@@ -273,6 +277,7 @@ mod tests {
             end_time: None,
             level: Some("ERROR".to_string()),
             service: Some("api-service".to_string()),
+            index_pattern: None,
         };
 
         let sql = client.build_sql_query(&query);
