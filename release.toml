@@ -1,0 +1,28 @@
+# cargo-release configuration
+# See: https://github.com/crate-ci/cargo-release
+
+# Sign commits and tags
+sign-commit = false
+sign-tag = false
+
+# Push changes and tags to remote
+push = true
+push-remote = "origin"
+
+# Tag format
+tag-prefix = "v"
+tag-name = "{{prefix}}{{version}}"
+tag-message = "Release {{version}}"
+
+# Pre-release checks
+verify = true
+owners = []
+
+# Git commit message
+commit-message = "chore(release): bump version to {{version}}"
+
+# Changelog settings
+[changelog]
+# Generate changelog from conventional commits
+update = true
+changelogs = ["CHANGELOG.md"]
