@@ -191,7 +191,7 @@ fn test_config_serialization() {
 
 #[tokio::test]
 async fn test_log_filter_application() {
-    let logs = vec![
+    let logs = [
         zeteo::logs::LogEntry {
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             level: "ERROR".to_string(),
