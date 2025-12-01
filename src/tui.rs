@@ -826,7 +826,6 @@ impl TuiApp {
                 } else {
                     let new_pattern = args.join(" ");
                     self.session_index_pattern = Some(new_pattern.clone());
-                    // Update the tool executor with the new index pattern
                     if let Some(ref mut executor) = self.tool_executor {
                         executor.set_index_pattern(Some(new_pattern.clone()));
                     }

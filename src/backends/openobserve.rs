@@ -72,7 +72,6 @@ impl OpenObserveClient {
             format!("WHERE {}", conditions.join(" AND "))
         };
 
-        // Use the index pattern from the query if provided, otherwise use the default stream
         let stream = query.index_pattern.as_deref().unwrap_or(&self.stream);
 
         format!(

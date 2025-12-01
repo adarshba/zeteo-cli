@@ -52,10 +52,8 @@ pub struct TimeRange {
     pub end: String,
 }
 
-/// Tool executor that handles log-related function calls
 pub struct ToolExecutor {
     backend: Arc<dyn LogBackendClient>,
-    /// Optional index pattern override for the session
     index_pattern_override: Option<String>,
 }
 
@@ -67,7 +65,6 @@ impl ToolExecutor {
         }
     }
 
-    /// Set the index pattern override for this session
     pub fn set_index_pattern(&mut self, pattern: Option<String>) {
         self.index_pattern_override = pattern;
     }

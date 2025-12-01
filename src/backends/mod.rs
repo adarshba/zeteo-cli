@@ -15,7 +15,6 @@ pub struct LogQuery {
     pub end_time: Option<String>,
     pub level: Option<String>,
     pub service: Option<String>,
-    /// Optional index pattern override (stream name for OpenObserve)
     #[serde(default)]
     pub index_pattern: Option<String>,
 }

@@ -94,8 +94,10 @@ impl KibanaClient {
             }));
         }
 
-        // Use the index pattern from the query if provided, otherwise use the default
-        let index_pattern = query.index_pattern.as_deref().unwrap_or(&self.index_pattern);
+        let index_pattern = query
+            .index_pattern
+            .as_deref()
+            .unwrap_or(&self.index_pattern);
 
         json!({
             "params": {
