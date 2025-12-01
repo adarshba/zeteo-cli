@@ -1,16 +1,26 @@
 [package]
-name = "zeteo-cli"
+name = "zeteo"
 version = "0.1.0"
 edition = "2021"
 authors = ["Zeteo Contributors"]
 description = "A Rust-based CLI AI agent with OTEL log exploration capabilities"
 license = "MIT"
 repository = "https://github.com/adarshba/zeteo-cli"
+homepage = "https://github.com/adarshba/zeteo-cli"
+readme = "README.md"
 keywords = ["cli", "ai", "otel", "logs", "gemini"]
 categories = ["command-line-utilities"]
 
+# Limit what's published to crates.io
+include = [
+    "src/**",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+]
+
 [lib]
-name = "zeteo_cli"
+name = "zeteo"
 path = "src/lib.rs"
 
 [[bin]]
