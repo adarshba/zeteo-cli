@@ -64,6 +64,12 @@ chrono = "0.4"
 # Environment Variables
 dotenv = "0.15"
 
+# Redis for session persistence
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+# UUID for session IDs
+uuid = { version = "1.0", features = ["v4"] }
+
 [profile.release]
 opt-level = 3
 lto = true
