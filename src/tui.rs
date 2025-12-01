@@ -441,6 +441,7 @@ pub struct TuiApp {
     resume_sessions: Vec<ConversationInfo>,
     resume_selected: usize,
     session_index_pattern: Option<String>,
+    selected_message: Option<usize>, // Index of selected message for copying
 }
 
 impl TuiApp {
@@ -479,6 +480,7 @@ impl TuiApp {
             resume_sessions: Vec::new(),
             resume_selected: 0,
             session_index_pattern: None,
+            selected_message: None,
         }
     }
 
@@ -532,12 +534,36 @@ impl TuiApp {
                             return Ok(());
                         }
 
-                        // Ctrl+Y to copy last AI response
+                        // Ctrl+Y to copy selected or last AI response
                         if key.modifiers.contains(KeyModifiers::CONTROL)
                             && key.code == KeyCode::Char('y')
                         {
-                            self.copy_last_response();
+                            self.copy_response();
                             continue;
+                        }
+
+                        // Ctrl+Up to select previous message
+                        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Up
+                        {
+                            self.select_previous_message();
+                            continue;
+                        }
+
+                        // Ctrl+Down to select next message
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && key.code == KeyCode::Down
+                        {
+                            self.select_next_message();
+                            continue;
+                        }
+
+                        // Escape clears message selection
+                        if key.code == KeyCode::Esc {
+                            if self.selected_message.is_some() {
+                                self.selected_message = None;
+                                continue;
+                            }
+                            return Ok(());
                         }
 
                         if self.show_slash_modal {
@@ -756,9 +782,6 @@ impl TuiApp {
                             KeyCode::PageDown => {
                                 self.scroll_offset = self.scroll_offset.saturating_add(10);
                             }
-                            KeyCode::Esc => {
-                                return Ok(());
-                            }
                             _ => {}
                         }
                     }
@@ -914,42 +937,8 @@ impl TuiApp {
                 }
             }
             "copy" | "y" => {
-                if let Some(content) = self.get_last_assistant_response() {
-                    match arboard::Clipboard::new() {
-                        Ok(mut clipboard) => match clipboard.set_text(&content) {
-                            Ok(_) => {
-                                self.status_message = Some("Copied to clipboard".to_string());
-                                Some("copied".to_string())
-                            }
-                            Err(e) => {
-                                self.messages.push(ChatMessage {
-                                    role: "error".to_string(),
-                                    content: format!("Failed to copy: {}", e),
-                                    tool_calls: None,
-                                    tool_call_id: None,
-                                });
-                                Some("copy_error".to_string())
-                            }
-                        },
-                        Err(e) => {
-                            self.messages.push(ChatMessage {
-                                role: "error".to_string(),
-                                content: format!("Clipboard not available: {}", e),
-                                tool_calls: None,
-                                tool_call_id: None,
-                            });
-                            Some("clipboard_error".to_string())
-                        }
-                    }
-                } else {
-                    self.messages.push(ChatMessage {
-                        role: "assistant".to_string(),
-                        content: "No AI response to copy yet.".to_string(),
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                    Some("copy_empty".to_string())
-                }
+                self.copy_response();
+                Some("copied".to_string())
             }
             "backend" | "b" => {
                 if args.is_empty() {
@@ -1031,22 +1020,104 @@ impl TuiApp {
         false
     }
 
-    /// Get the last assistant response content
-    fn get_last_assistant_response(&self) -> Option<String> {
+    /// Get assistant message indices for selection
+    fn get_assistant_message_indices(&self) -> Vec<usize> {
         self.messages
             .iter()
-            .rev()
-            .find(|m| m.role == "assistant")
-            .map(|m| m.content.clone())
+            .enumerate()
+            .filter(|(_, m)| m.role == "assistant" && !m.content.is_empty())
+            .map(|(i, _)| i)
+            .collect()
     }
 
-    /// Copy the last assistant response to clipboard
-    fn copy_last_response(&mut self) {
-        if let Some(content) = self.get_last_assistant_response() {
+    /// Select previous assistant message
+    fn select_previous_message(&mut self) {
+        let indices = self.get_assistant_message_indices();
+        if indices.is_empty() {
+            return;
+        }
+
+        self.selected_message = match self.selected_message {
+            None => Some(*indices.last().unwrap()),
+            Some(current) => {
+                // Find the previous assistant message index
+                indices
+                    .iter()
+                    .rev()
+                    .find(|&&i| i < current)
+                    .copied()
+                    .or(Some(*indices.last().unwrap()))
+            }
+        };
+        self.status_message = Some("Use Ctrl+Y to copy, Esc to cancel".to_string());
+    }
+
+    /// Select next assistant message
+    fn select_next_message(&mut self) {
+        let indices = self.get_assistant_message_indices();
+        if indices.is_empty() {
+            return;
+        }
+
+        self.selected_message = match self.selected_message {
+            None => Some(*indices.first().unwrap()),
+            Some(current) => {
+                // Find the next assistant message index
+                indices
+                    .iter()
+                    .find(|&&i| i > current)
+                    .copied()
+                    .or(Some(*indices.first().unwrap()))
+            }
+        };
+        self.status_message = Some("Use Ctrl+Y to copy, Esc to cancel".to_string());
+    }
+
+    /// Copy selected or last assistant response (with preceding prompt) to clipboard
+    fn copy_response(&mut self) {
+        // Find the assistant message index
+        let assistant_idx = if let Some(idx) = self.selected_message {
+            Some(idx)
+        } else {
+            // Find the last assistant message index
+            self.messages
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, m)| m.role == "assistant")
+                .map(|(i, _)| i)
+        };
+
+        if let Some(idx) = assistant_idx {
+            let assistant_msg = &self.messages[idx];
+            if assistant_msg.content.is_empty() {
+                self.status_message = Some("Message is empty".to_string());
+                return;
+            }
+
+            // Find the preceding user message
+            let user_prompt = self.messages[..idx]
+                .iter()
+                .rev()
+                .find(|m| m.role == "user")
+                .map(|m| m.content.clone());
+
+            // Format as prompt + response
+            let content = if let Some(prompt) = user_prompt {
+                format!(
+                    "## Prompt\n\n{}\n\n## Response\n\n{}",
+                    prompt, assistant_msg.content
+                )
+            } else {
+                assistant_msg.content.clone()
+            };
+
             match arboard::Clipboard::new() {
                 Ok(mut clipboard) => match clipboard.set_text(&content) {
                     Ok(_) => {
-                        self.status_message = Some("Copied to clipboard".to_string());
+                        self.status_message =
+                            Some("Copied prompt & response to clipboard".to_string());
+                        self.selected_message = None; // Clear selection after copy
                     }
                     Err(e) => {
                         self.status_message = Some(format!("Failed to copy: {}", e));
@@ -1252,23 +1323,49 @@ impl TuiApp {
 
     fn build_system_message(&self) -> String {
         let mut msg = String::from(
-            "You are Zeteo, an AI assistant specialized in log analysis and observability. ",
+            "You are Zeteo, an AI assistant specialized in log analysis and observability.\n\n",
         );
 
         if self.tool_executor.is_some() {
             msg.push_str(&format!(
-                "You have access to a log backend ({}) and can query logs to help users investigate issues, \
-                find errors, analyze patterns, and troubleshoot problems. \
-                When users ask about logs, errors, issues, or system behavior, use the available tools to query \
-                the logs and provide insightful analysis. \
-                Always explain what you found and provide actionable recommendations when relevant. \
-                Format log data in a readable way and highlight important patterns.",
-                self.backend_name.as_deref().unwrap_or("logs")
+                "## Your Capabilities\n\
+                You have access to a log backend ({backend}) and can query logs to help users investigate issues, \
+                find errors, analyze patterns, and troubleshoot problems.\n\n\
+                ## Available Tools\n\n\
+                ### 1. query_logs\n\
+                Search and retrieve logs from the backend.\n\
+                - **query** (required): Search string. Use '*' for all logs, or terms like 'error', 'timeout', 'failed'.\n\
+                - **max_results** (optional): Number of results (default: 50, max: 200). Start with 20-50 for initial queries.\n\
+                - **level** (optional): Filter by severity - must be exactly one of: ERROR, WARN, INFO, DEBUG\n\
+                - **service** (optional): Filter by service name (use list_services first if unsure).\n\
+                - **start_time** (optional): Relative time like '1h', '30m', '2d' or ISO 8601 format.\n\
+                - **end_time** (optional): Defaults to now.\n\n\
+                ### 2. list_services\n\
+                Get available service names. No parameters required. Call this first if you need to filter by service.\n\n\
+                ### 3. get_log_stats\n\
+                Get aggregated statistics (counts by level, service distribution).\n\
+                - **start_time** (optional): Start of time range.\n\
+                - **end_time** (optional): End of time range.\n\n\
+                ## Tool Usage Guidelines\n\n\
+                1. **Start broad, then narrow**: Begin with a general query, then refine based on results.\n\
+                2. **Use appropriate time ranges**: Default to '1h' for recent issues, '24h' for patterns, '7d' for trends.\n\
+                3. **Check services first**: If filtering by service, call list_services to get valid names.\n\
+                4. **Combine filters wisely**: Use level + query together for targeted results.\n\
+                5. **Handle empty results**: If no results, try broadening the query or time range.\n\n\
+                ## Response Format\n\n\
+                - Summarize findings clearly with key insights first.\n\
+                - Highlight error patterns, anomalies, or concerning trends.\n\
+                - Provide actionable recommendations when issues are found.\n\
+                - Format log snippets in code blocks for readability.\n\
+                - If results are truncated, suggest how to narrow the search.",
+                backend = self.backend_name.as_deref().unwrap_or("logs")
             ));
         } else {
             msg.push_str(
-                "You can help with general questions. Note: No log backend is currently configured. \
-                To enable log analysis, configure a backend (kibana or openobserve) in your config file."
+                "You can help with general questions about observability, logging best practices, \
+                and troubleshooting strategies.\n\n\
+                **Note**: No log backend is currently configured. To enable log analysis, \
+                configure a backend (kibana, openobserve, or elasticsearch) in your config file.",
             );
         }
 

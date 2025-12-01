@@ -72,26 +72,35 @@ impl AiProvider for OpenAiProvider {
         let messages: Vec<OpenAiMessage> = request
             .messages
             .iter()
-            .map(|m| OpenAiMessage {
-                role: m.role.clone(),
-                content: if m.content.is_empty() {
-                    None
-                } else {
-                    Some(m.content.clone())
-                },
-                tool_calls: m.tool_calls.as_ref().map(|tcs| {
-                    tcs.iter()
-                        .map(|tc| OpenAiToolCall {
-                            id: tc.id.clone(),
-                            call_type: tc.call_type.clone(),
-                            function: OpenAiFunctionCall {
-                                name: tc.function.name.clone(),
-                                arguments: tc.function.arguments.clone(),
-                            },
-                        })
-                        .collect()
-                }),
-                tool_call_id: m.tool_call_id.clone(),
+            .map(|m| {
+                // OpenAI requires content to be non-null for user and tool messages
+                // Only assistant messages with tool_calls can have null content
+                let content =
+                    if m.role == "assistant" && m.tool_calls.is_some() && m.content.is_empty() {
+                        None
+                    } else if m.content.is_empty() {
+                        Some(String::new()) // Send empty string instead of null
+                    } else {
+                        Some(m.content.clone())
+                    };
+
+                OpenAiMessage {
+                    role: m.role.clone(),
+                    content,
+                    tool_calls: m.tool_calls.as_ref().map(|tcs| {
+                        tcs.iter()
+                            .map(|tc| OpenAiToolCall {
+                                id: tc.id.clone(),
+                                call_type: tc.call_type.clone(),
+                                function: OpenAiFunctionCall {
+                                    name: tc.function.name.clone(),
+                                    arguments: tc.function.arguments.clone(),
+                                },
+                            })
+                            .collect()
+                    }),
+                    tool_call_id: m.tool_call_id.clone(),
+                }
             })
             .collect();
 
