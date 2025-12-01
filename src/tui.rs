@@ -18,6 +18,7 @@ use std::sync::Arc;
 use crate::backends::{LogBackendClient, elasticsearch::ElasticsearchClient, kibana::KibanaClient, openobserve::OpenObserveClient};
 use crate::config::{Config, LogBackend};
 use crate::providers::{AiProvider, ChatRequest, Message, ToolCall, create_log_tools};
+use crate::session::{SessionStore, StoredMessage, ConversationInfo, try_create_session_store};
 use crate::tools::ToolExecutor;
 
 // Slash command definitions
@@ -30,9 +31,11 @@ struct SlashCommand {
 
 const SLASH_COMMANDS: &[SlashCommand] = &[
     SlashCommand { name: "backend", description: "Switch log backend (kibana/openobserve)", shortcut: Some("b") },
-    SlashCommand { name: "clear", description: "Clear chat history", shortcut: Some("c") },
+    SlashCommand { name: "clear", description: "Clear current session history", shortcut: Some("c") },
     SlashCommand { name: "help", description: "Show available commands", shortcut: Some("h") },
+    SlashCommand { name: "index", description: "Change index pattern for this session", shortcut: Some("i") },
     SlashCommand { name: "quit", description: "Exit the application", shortcut: Some("q") },
+    SlashCommand { name: "resume", description: "Resume a previous conversation", shortcut: Some("r") },
 ];
 
 // Markdown rendering support
@@ -374,10 +377,24 @@ pub struct TuiApp {
     slash_filter: String,
     slash_selected: usize,
     available_backends: Vec<String>,
+    // Session management
+    session_store: Option<SessionStore>,
+    // Resume dialog state
+    show_resume_modal: bool,
+    resume_sessions: Vec<ConversationInfo>,
+    resume_selected: usize,
+    // Session-specific index pattern override
+    session_index_pattern: Option<String>,
 }
 
 impl TuiApp {
-    pub fn new(provider: Arc<dyn AiProvider>, tool_executor: Option<ToolExecutor>, backend_name: Option<String>, config: Option<Config>) -> Self {
+    pub fn new(
+        provider: Arc<dyn AiProvider>, 
+        tool_executor: Option<ToolExecutor>, 
+        backend_name: Option<String>, 
+        config: Option<Config>,
+        session_store: Option<SessionStore>,
+    ) -> Self {
         let available_backends = config.as_ref()
             .map(|c| c.backends.keys().cloned().collect())
             .unwrap_or_default();
@@ -400,6 +417,11 @@ impl TuiApp {
             slash_filter: String::new(),
             slash_selected: 0,
             available_backends,
+            session_store,
+            show_resume_modal: false,
+            resume_sessions: Vec::new(),
+            resume_selected: 0,
+            session_index_pattern: None,
         }
     }
 
@@ -469,7 +491,7 @@ impl TuiApp {
                                         
                                         // Auto-execute simple commands
                                         if cmd_name == "quit" || cmd_name == "clear" || cmd_name == "help" {
-                                            if let Some(result) = self.execute_slash_command(&self.input.clone()) {
+                                            if let Some(result) = self.execute_slash_command(&self.input.clone()).await {
                                                 if result == "quit" {
                                                     return Ok(());
                                                 }
@@ -480,6 +502,18 @@ impl TuiApp {
                                             // Show backend selection
                                             self.input = "/backend ".to_string();
                                             self.cursor_position = self.input.len();
+                                        } else if cmd_name == "index" {
+                                            // Show index input
+                                            self.input = "/index ".to_string();
+                                            self.cursor_position = self.input.len();
+                                        } else if cmd_name == "resume" {
+                                            // Show resume dialog
+                                            if let Some(result) = self.execute_slash_command(&format!("/{}", cmd_name)).await {
+                                                if result == "resume_modal" {
+                                                    self.input.clear();
+                                                    self.cursor_position = 0;
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -520,6 +554,48 @@ impl TuiApp {
                             continue;
                         }
 
+                        // Handle resume modal input
+                        if self.show_resume_modal {
+                            match key.code {
+                                KeyCode::Esc => {
+                                    self.show_resume_modal = false;
+                                    self.resume_selected = 0;
+                                }
+                                KeyCode::Enter => {
+                                    if let Some(session) = self.resume_sessions.get(self.resume_selected) {
+                                        let session_id = session.id.clone();
+                                        self.show_resume_modal = false;
+                                        self.resume_selected = 0;
+                                        
+                                        // Resume the selected session
+                                        if let Err(e) = self.resume_session(&session_id).await {
+                                            self.messages.push(ChatMessage {
+                                                role: "error".to_string(),
+                                                content: format!("Failed to resume session: {}", e),
+                                                tool_calls: None,
+                                                tool_call_id: None,
+                                            });
+                                        } else {
+                                            self.show_welcome = false;
+                                            self.status_message = Some("Session resumed".to_string());
+                                        }
+                                    }
+                                }
+                                KeyCode::Up => {
+                                    if self.resume_selected > 0 {
+                                        self.resume_selected -= 1;
+                                    }
+                                }
+                                KeyCode::Down => {
+                                    if self.resume_selected < self.resume_sessions.len().saturating_sub(1) {
+                                        self.resume_selected += 1;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            continue;
+                        }
+
                         match key.code {
                             KeyCode::Enter => {
                             if !self.input.trim().is_empty() && !self.is_loading {
@@ -530,7 +606,7 @@ impl TuiApp {
                                 
                                 // Handle slash commands
                                 if input.starts_with('/') {
-                                    if let Some(result) = self.execute_slash_command(&input) {
+                                    if let Some(result) = self.execute_slash_command(&input).await {
                                         if result == "quit" {
                                             return Ok(());
                                         }
@@ -564,6 +640,9 @@ impl TuiApp {
                                 self.is_loading = false;
                                 self.status_message = None;
                                 self.scroll_to_bottom();
+                                
+                                // Save session after each message
+                                self.save_session().await;
                             }
                         }
                         KeyCode::Char('/') if self.input.is_empty() => {
@@ -653,7 +732,7 @@ impl TuiApp {
             .collect()
     }
 
-    fn execute_slash_command(&mut self, input: &str) -> Option<String> {
+    async fn execute_slash_command(&mut self, input: &str) -> Option<String> {
         let parts: Vec<&str> = input.trim_start_matches('/').split_whitespace().collect();
         let cmd = parts.first()?;
         let args: Vec<&str> = parts.iter().skip(1).cloned().collect();
@@ -663,7 +742,14 @@ impl TuiApp {
             "clear" | "c" => {
                 self.messages.clear();
                 self.scroll_offset = 0;
-                self.status_message = Some("Chat cleared".to_string());
+                self.show_welcome = true;
+                
+                // Clear session in Redis if available
+                if let Some(ref session_store) = self.session_store {
+                    let _ = session_store.clear_current_session().await;
+                }
+                
+                self.status_message = Some("Session cleared".to_string());
                 Some("cleared".to_string())
             }
             "help" | "h" => {
@@ -682,6 +768,73 @@ impl TuiApp {
                     tool_call_id: None,
                 });
                 Some("help".to_string())
+            }
+            "index" | "i" => {
+                if args.is_empty() {
+                    // Show current index pattern
+                    let current_index = self.get_current_index_pattern();
+                    self.messages.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: format!(
+                            "## Index Pattern\n\nCurrent: **{}**\n\n*Usage: `/index <pattern>` to change for this session*\n\n*Example: `/index logs-prod-*`*",
+                            current_index.unwrap_or("not set".to_string())
+                        ),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    });
+                    Some("index_show".to_string())
+                } else {
+                    // Set session-specific index pattern
+                    let new_pattern = args.join(" ");
+                    self.session_index_pattern = Some(new_pattern.clone());
+                    self.messages.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: format!("✓ Index pattern changed to **{}** for this session", new_pattern),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    });
+                    Some("index_set".to_string())
+                }
+            }
+            "resume" | "r" => {
+                // Load available sessions and show resume modal
+                if let Some(ref session_store) = self.session_store {
+                    match session_store.list_sessions().await {
+                        Ok(sessions) => {
+                            if sessions.is_empty() {
+                                self.messages.push(ChatMessage {
+                                    role: "assistant".to_string(),
+                                    content: "No previous conversations found.".to_string(),
+                                    tool_calls: None,
+                                    tool_call_id: None,
+                                });
+                                Some("resume_empty".to_string())
+                            } else {
+                                self.resume_sessions = sessions;
+                                self.resume_selected = 0;
+                                self.show_resume_modal = true;
+                                Some("resume_modal".to_string())
+                            }
+                        }
+                        Err(e) => {
+                            self.messages.push(ChatMessage {
+                                role: "error".to_string(),
+                                content: format!("Failed to load sessions: {}", e),
+                                tool_calls: None,
+                                tool_call_id: None,
+                            });
+                            Some("resume_error".to_string())
+                        }
+                    }
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: "error".to_string(),
+                        content: "Redis not configured. Set REDIS_URL to enable session persistence.".to_string(),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    });
+                    Some("resume_no_redis".to_string())
+                }
             }
             "backend" | "b" => {
                 if args.is_empty() {
@@ -754,6 +907,72 @@ impl TuiApp {
             }
         }
         false
+    }
+
+    /// Get the current index pattern (session override or from config)
+    fn get_current_index_pattern(&self) -> Option<String> {
+        // Session override takes precedence
+        if let Some(ref pattern) = self.session_index_pattern {
+            return Some(pattern.clone());
+        }
+        
+        // Fall back to config-based index pattern
+        if let Some(ref config) = self.config {
+            if let Some(ref backend_name) = self.backend_name {
+                if let Some(backend) = config.backends.get(backend_name) {
+                    return match backend {
+                        LogBackend::Elasticsearch { index_pattern, .. } => Some(index_pattern.clone()),
+                        LogBackend::Kibana { index_pattern, .. } => Some(index_pattern.clone()),
+                        LogBackend::OpenObserve { stream, .. } => Some(stream.clone()),
+                    };
+                }
+            }
+        }
+        None
+    }
+
+    /// Save the current session to Redis
+    async fn save_session(&self) {
+        if let Some(ref session_store) = self.session_store {
+            let stored_messages: Vec<StoredMessage> = self.messages
+                .iter()
+                .filter(|m| m.role == "user" || m.role == "assistant")
+                .map(|m| StoredMessage {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                })
+                .collect();
+            
+            if !stored_messages.is_empty() {
+                let _ = session_store.save_messages(&stored_messages).await;
+            }
+        }
+    }
+
+    /// Resume a previous session
+    async fn resume_session(&mut self, session_id: &str) -> Result<()> {
+        if let Some(ref mut session_store) = self.session_store {
+            let stored_messages = session_store.load_messages(session_id).await?;
+            
+            // Clear current messages and load stored ones
+            self.messages.clear();
+            for stored in stored_messages {
+                self.messages.push(ChatMessage {
+                    role: stored.role,
+                    content: stored.content,
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+            
+            // Update session store to use the resumed session ID
+            session_store.set_current_session_id(session_id.to_string());
+            
+            self.scroll_to_bottom();
+            Ok(())
+        } else {
+            anyhow::bail!("No session store available")
+        }
     }
 
     async fn process_message(&mut self, _input: String) -> Result<()> {
@@ -928,6 +1147,11 @@ impl TuiApp {
         if self.show_slash_modal {
             self.render_slash_modal(f, chunks[2]);
         }
+        
+        // Render resume modal on top
+        if self.show_resume_modal {
+            self.render_resume_modal(f, chunks[1]);
+        }
     }
 
     fn render_slash_modal(&self, f: &mut Frame, input_area: Rect) {
@@ -982,6 +1206,66 @@ impl TuiApp {
                     .border_style(Style::default().fg(Color::Rgb(58, 58, 60)))
                     .border_type(ratatui::widgets::BorderType::Rounded)
                     .title(" Commands ")
+                    .title_style(Style::default().fg(Color::Rgb(142, 142, 147)))
+            )
+            .style(Style::default().bg(Color::Rgb(30, 30, 30)));
+
+        f.render_widget(modal, modal_area);
+    }
+
+    fn render_resume_modal(&self, f: &mut Frame, chat_area: Rect) {
+        if self.resume_sessions.is_empty() {
+            return;
+        }
+
+        let modal_height = (self.resume_sessions.len() + 2).min(12) as u16;
+        let modal_width = 60u16.min(chat_area.width.saturating_sub(8));
+        
+        // Center modal in chat area
+        let modal_area = Rect {
+            x: chat_area.x + (chat_area.width.saturating_sub(modal_width)) / 2,
+            y: chat_area.y + (chat_area.height.saturating_sub(modal_height)) / 2,
+            width: modal_width,
+            height: modal_height,
+        };
+
+        // Clear the area behind the modal
+        f.render_widget(Clear, modal_area);
+
+        let mut lines: Vec<Line> = Vec::new();
+        
+        for (i, session) in self.resume_sessions.iter().enumerate() {
+            let is_selected = i == self.resume_selected;
+            
+            let style = if is_selected {
+                Style::default().fg(Color::Black).bg(Color::Rgb(0, 122, 255))
+            } else {
+                Style::default().fg(Color::White)
+            };
+            
+            let time_style = if is_selected {
+                Style::default().fg(Color::Rgb(200, 200, 200)).bg(Color::Rgb(0, 122, 255))
+            } else {
+                Style::default().fg(Color::Rgb(142, 142, 147))
+            };
+
+            // Format the timestamp
+            let time_ago = format_time_ago(session.updated_at);
+            let msg_count = format!("{} msgs", session.message_count);
+            
+            lines.push(Line::from(vec![
+                Span::styled(format!(" {} ", session.title), style),
+                Span::styled(format!("  {} • {}", time_ago, msg_count), time_style),
+            ]));
+        }
+
+        let modal = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Rgb(58, 58, 60)))
+                    .border_type(ratatui::widgets::BorderType::Rounded)
+                    .title(" Resume Conversation ")
                     .title_style(Style::default().fg(Color::Rgb(142, 142, 147)))
             )
             .style(Style::default().bg(Color::Rgb(30, 30, 30)));
@@ -1240,6 +1524,24 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+fn format_time_ago(timestamp: i64) -> String {
+    let now = chrono::Utc::now().timestamp();
+    let diff = now - timestamp;
+    
+    if diff < 60 {
+        "just now".to_string()
+    } else if diff < 3600 {
+        let mins = diff / 60;
+        format!("{}m ago", mins)
+    } else if diff < 86400 {
+        let hours = diff / 3600;
+        format!("{}h ago", hours)
+    } else {
+        let days = diff / 86400;
+        format!("{}d ago", days)
+    }
+}
+
 fn try_provider(name: &str) -> Option<Arc<dyn AiProvider>> {
     match name {
         "openai" => {
@@ -1340,5 +1642,8 @@ pub async fn create_tui_session(provider: Option<String>, backend: Option<String
         (None, None)
     };
 
-    Ok(TuiApp::new(provider, tool_executor, backend_name, config))
+    // Try to create session store for conversation persistence
+    let session_store = try_create_session_store().await;
+
+    Ok(TuiApp::new(provider, tool_executor, backend_name, config, session_store))
 }

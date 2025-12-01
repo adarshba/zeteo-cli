@@ -10,6 +10,7 @@ mod logs;
 mod mcp;
 mod providers;
 mod retry;
+mod session;
 mod tools;
 mod tui;
 
