@@ -21,10 +21,7 @@ impl Default for RetryConfig {
 }
 
 #[allow(dead_code)]
-pub async fn retry_with_backoff<F, T, Fut>(
-    operation: F,
-    config: &RetryConfig,
-) -> Result<T>
+pub async fn retry_with_backoff<F, T, Fut>(operation: F, config: &RetryConfig) -> Result<T>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T>>,
@@ -37,7 +34,7 @@ where
             Ok(result) => return Ok(result),
             Err(e) => {
                 attempt += 1;
-                
+
                 if attempt >= config.max_retries {
                     return Err(anyhow::anyhow!(
                         "Operation failed after {} attempts: {}",
@@ -53,10 +50,9 @@ where
 
                 tokio::time::sleep(delay).await;
 
-                // Calculate next delay with exponential backoff
-                delay = Duration::from_millis(
-                    ((delay.as_millis() as f64) * config.multiplier) as u64
-                ).min(config.max_delay);
+                delay =
+                    Duration::from_millis(((delay.as_millis() as f64) * config.multiplier) as u64)
+                        .min(config.max_delay);
             }
         }
     }
@@ -65,8 +61,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_retry_succeeds_on_first_attempt() {

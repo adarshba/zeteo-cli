@@ -130,7 +130,6 @@ impl LogExplorer {
                     mcp_server.clone(),
                 )?;
 
-                // Initialize the MCP client
                 client.initialize()?;
 
                 self.mcp_client = Some(client);
@@ -141,7 +140,6 @@ impl LogExplorer {
     }
 
     pub async fn search_logs(&self, query: &str, max_results: usize) -> Result<Vec<LogEntry>> {
-        // Try direct backend client first
         if let Some(backend_client) = &self.backend_client {
             let log_query = LogQuery {
                 query: query.to_string(),
@@ -166,11 +164,9 @@ impl LogExplorer {
                 .collect());
         }
 
-        // Try to use MCP client if available
         if let Some(client) = &self.mcp_client {
             match client.query_logs(query, max_results) {
                 Ok(result) => {
-                    // Parse the result into LogEntry structs
                     if let Some(logs_array) = result.get("logs").and_then(|v| v.as_array()) {
                         let logs: Vec<LogEntry> = logs_array
                             .iter()
@@ -185,7 +181,6 @@ impl LogExplorer {
             }
         }
 
-        // Fallback: return placeholder data
         if let Some(mcp_server) = &self.mcp_server {
             println!("Searching logs with query: {}", query.cyan());
             println!("MCP Server: {}", mcp_server.green());
@@ -197,8 +192,12 @@ impl LogExplorer {
         Ok(vec![])
     }
 
-    pub async fn search_logs_with_filter(&self, query: &str, max_results: usize, filter: &LogFilter) -> Result<Vec<LogEntry>> {
-        // Build query with filters
+    pub async fn search_logs_with_filter(
+        &self,
+        query: &str,
+        max_results: usize,
+        filter: &LogFilter,
+    ) -> Result<Vec<LogEntry>> {
         if let Some(backend_client) = &self.backend_client {
             let log_query = LogQuery {
                 query: query.to_string(),
@@ -222,42 +221,45 @@ impl LogExplorer {
                 })
                 .collect();
 
-            // Apply contains filter if specified
             if let Some(contains) = &filter.contains {
                 logs.retain(|log| {
-                    log.message.to_lowercase().contains(&contains.to_lowercase())
+                    log.message
+                        .to_lowercase()
+                        .contains(&contains.to_lowercase())
                 });
             }
 
             return Ok(logs);
         }
 
-        // Fallback to MCP with post-filtering
         let mut logs = self.search_logs(query, max_results).await?;
-        
-        // Apply filters
+
         logs.retain(|log| {
             if let Some(level) = &filter.level {
                 if !log.level.eq_ignore_ascii_case(level) {
                     return false;
                 }
             }
-            
+
             if let Some(service) = &filter.service {
                 if log.service.as_ref() != Some(service) {
                     return false;
                 }
             }
-            
+
             if let Some(contains) = &filter.contains {
-                if !log.message.to_lowercase().contains(&contains.to_lowercase()) {
+                if !log
+                    .message
+                    .to_lowercase()
+                    .contains(&contains.to_lowercase())
+                {
                     return false;
                 }
             }
-            
+
             true
         });
-        
+
         Ok(logs)
     }
 
@@ -265,30 +267,28 @@ impl LogExplorer {
     where
         F: Fn(&LogEntry) -> bool,
     {
-        // This would use MCP to stream logs in real-time
-        // For now, simulate streaming with batch fetching
         println!("{}", "Starting log stream...".cyan());
         println!("Query: {}", query.green());
         println!("Press Ctrl+C to stop streaming");
-        
+
         let mut _offset = 0;
         let batch_size = 10;
-        
+
         loop {
             let logs = self.search_logs(query, batch_size).await?;
-            
+
             if logs.is_empty() {
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 continue;
             }
-            
+
             for log in &logs {
                 if !callback(log) {
                     return Ok(());
                 }
                 self.display_single_log(log);
             }
-            
+
             _offset += logs.len();
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
@@ -298,24 +298,27 @@ impl LogExplorer {
         let mut level_counts = HashMap::new();
         let mut service_counts = HashMap::new();
         let mut timestamps = Vec::new();
-        
+
         for log in logs {
             *level_counts.entry(log.level.clone()).or_insert(0) += 1;
-            
+
             if let Some(service) = &log.service {
                 *service_counts.entry(service.clone()).or_insert(0) += 1;
             }
-            
+
             timestamps.push(log.timestamp.clone());
         }
-        
+
         let time_range = if !timestamps.is_empty() {
             timestamps.sort();
-            Some((timestamps.first().unwrap().clone(), timestamps.last().unwrap().clone()))
+            Some((
+                timestamps.first().unwrap().clone(),
+                timestamps.last().unwrap().clone(),
+            ))
         } else {
             None
         };
-        
+
         LogAggregation {
             total_count: logs.len(),
             level_counts,
@@ -327,40 +330,42 @@ impl LogExplorer {
     pub fn export_logs_json(&self, logs: &[LogEntry], filename: &str) -> Result<()> {
         use std::fs::File;
         use std::io::Write;
-        
+
         let json = serde_json::to_string_pretty(logs)?;
         let mut file = File::create(filename)?;
         file.write_all(json.as_bytes())?;
-        
-        println!("{}", format!("Exported {} logs to {}", logs.len(), filename).green());
+
+        println!(
+            "{}",
+            format!("Exported {} logs to {}", logs.len(), filename).green()
+        );
         Ok(())
     }
 
     pub fn export_logs_csv(&self, logs: &[LogEntry], filename: &str) -> Result<()> {
         use std::fs::File;
         use std::io::Write;
-        
+
         let mut file = File::create(filename)?;
-        
-        // Write header
+
         writeln!(file, "timestamp,level,message,service,trace_id")?;
-        
-        // Write data
+
         for log in logs {
             let service = log.service.as_deref().unwrap_or("");
             let trace_id = log.trace_id.as_deref().unwrap_or("");
             let message = log.message.replace(",", ";").replace("\n", " ");
-            
-            writeln!(file, "{},{},{},{},{}",
-                log.timestamp,
-                log.level,
-                message,
-                service,
-                trace_id
+
+            writeln!(
+                file,
+                "{},{},{},{},{}",
+                log.timestamp, log.level, message, service, trace_id
             )?;
         }
-        
-        println!("{}", format!("Exported {} logs to {}", logs.len(), filename).green());
+
+        println!(
+            "{}",
+            format!("Exported {} logs to {}", logs.len(), filename).green()
+        );
         Ok(())
     }
 
@@ -372,28 +377,29 @@ impl LogExplorer {
             "DEBUG" | "debug" => log.level.blue().bold(),
             _ => log.level.normal(),
         };
-        
-        println!("[{}] {} {}", 
+
+        println!(
+            "[{}] {} {}",
             log.timestamp.dimmed(),
             level_colored,
             log.message
         );
-        
+
         if let Some(service) = &log.service {
             println!("  Service: {}", service.cyan());
         }
-        
+
         if let Some(trace_id) = &log.trace_id {
             println!("  Trace ID: {}", trace_id.magenta());
         }
     }
-    
+
     pub fn display_logs(&self, logs: &[LogEntry]) {
         if logs.is_empty() {
             println!("{}", "No logs found.".yellow());
             return;
         }
-        
+
         for log in logs {
             self.display_single_log(log);
         }
@@ -402,7 +408,7 @@ impl LogExplorer {
     pub fn display_aggregation(&self, agg: &LogAggregation) {
         println!("\n{}", "=== Log Aggregation ===".cyan().bold());
         println!("Total logs: {}", agg.total_count.to_string().green().bold());
-        
+
         if !agg.level_counts.is_empty() {
             println!("\n{}", "By Level:".bold());
             let mut levels: Vec<_> = agg.level_counts.iter().collect();
@@ -418,7 +424,7 @@ impl LogExplorer {
                 println!("  {}: {}", level_colored, count);
             }
         }
-        
+
         if !agg.service_counts.is_empty() {
             println!("\n{}", "By Service:".bold());
             let mut services: Vec<_> = agg.service_counts.iter().collect();
@@ -427,7 +433,7 @@ impl LogExplorer {
                 println!("  {}: {}", service.cyan(), count);
             }
         }
-        
+
         if let Some((start, end)) = &agg.time_range {
             println!("\n{}", "Time Range:".bold());
             println!("  From: {}", start.dimmed());
@@ -435,25 +441,27 @@ impl LogExplorer {
         }
         println!();
     }
-    
+
     pub async fn interactive_mode(&self) -> Result<()> {
         println!("{}", "=== Interactive Log Explorer ===".green().bold());
         println!("Type your search queries or 'quit' to exit\n");
-        
+
         loop {
             let query = dialoguer::Input::<String>::new()
                 .with_prompt("Search")
                 .interact_text()?;
-            
-            if query.trim().eq_ignore_ascii_case("quit") || query.trim().eq_ignore_ascii_case("exit") {
+
+            if query.trim().eq_ignore_ascii_case("quit")
+                || query.trim().eq_ignore_ascii_case("exit")
+            {
                 break;
             }
-            
+
             let logs = self.search_logs(&query, 50).await?;
             self.display_logs(&logs);
             println!();
         }
-        
+
         Ok(())
     }
 }
@@ -496,4 +504,3 @@ mod tests {
         assert_eq!(logs.len(), 0);
     }
 }
-

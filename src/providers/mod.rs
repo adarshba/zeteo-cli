@@ -62,18 +62,20 @@ pub trait AiProvider: Send + Sync {
     #[allow(dead_code)]
     fn provider_name(&self) -> &str;
     #[allow(dead_code)]
-    fn supports_tools(&self) -> bool { true }
+    fn supports_tools(&self) -> bool {
+        true
+    }
 }
 
+pub mod azure;
+pub mod google;
 pub mod openai;
 pub mod vertex;
-pub mod google;
-pub mod azure;
 
+pub use azure::AzureProvider;
+pub use google::GoogleProvider;
 pub use openai::OpenAiProvider;
 pub use vertex::VertexProvider;
-pub use google::GoogleProvider;
-pub use azure::AzureProvider;
 
 /// Create the log query tools definition for AI function calling
 pub fn create_log_tools() -> Vec<Tool> {
