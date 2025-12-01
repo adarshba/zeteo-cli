@@ -52,14 +52,21 @@ pub struct TimeRange {
     pub end: String,
 }
 
-/// Tool executor that handles log-related function calls
 pub struct ToolExecutor {
     backend: Arc<dyn LogBackendClient>,
+    index_pattern_override: Option<String>,
 }
 
 impl ToolExecutor {
     pub fn new(backend: Arc<dyn LogBackendClient>) -> Self {
-        Self { backend }
+        Self {
+            backend,
+            index_pattern_override: None,
+        }
+    }
+
+    pub fn set_index_pattern(&mut self, pattern: Option<String>) {
+        self.index_pattern_override = pattern;
     }
 
     /// Execute a tool call and return the result as a JSON string
@@ -123,6 +130,7 @@ impl ToolExecutor {
             end_time,
             level: args.level,
             service: args.service,
+            index_pattern: self.index_pattern_override.clone(),
         };
 
         let logs = self.backend.query_logs(&query).await?;
@@ -177,6 +185,7 @@ impl ToolExecutor {
             end_time: None,
             level: None,
             service: None,
+            index_pattern: self.index_pattern_override.clone(),
         };
 
         let logs = self.backend.query_logs(&query).await?;
@@ -201,6 +210,7 @@ impl ToolExecutor {
             end_time: args.end_time.as_ref().and_then(|t| self.parse_time(t)),
             level: None,
             service: None,
+            index_pattern: self.index_pattern_override.clone(),
         };
 
         let logs = self.backend.query_logs(&query).await?;

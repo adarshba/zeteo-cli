@@ -15,6 +15,8 @@ pub struct LogQuery {
     pub end_time: Option<String>,
     pub level: Option<String>,
     pub service: Option<String>,
+    #[serde(default)]
+    pub index_pattern: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

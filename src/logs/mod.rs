@@ -148,6 +148,7 @@ impl LogExplorer {
                 end_time: None,
                 level: None,
                 service: None,
+                index_pattern: None,
             };
 
             let backend_logs = backend_client.query_logs(&log_query).await?;
@@ -206,6 +207,7 @@ impl LogExplorer {
                 end_time: filter.end_time.clone(),
                 level: filter.level.clone(),
                 service: filter.service.clone(),
+                index_pattern: None,
             };
 
             let backend_logs = backend_client.query_logs(&log_query).await?;

@@ -94,9 +94,14 @@ impl KibanaClient {
             }));
         }
 
+        let index_pattern = query
+            .index_pattern
+            .as_deref()
+            .unwrap_or(&self.index_pattern);
+
         json!({
             "params": {
-                "index": self.index_pattern,
+                "index": index_pattern,
                 "body": {
                     "version": true,
                     "size": query.max_results,
@@ -337,6 +342,7 @@ mod tests {
             end_time: None,
             level: None,
             service: None,
+            index_pattern: None,
         };
 
         let body = client.build_search_body(&query);
@@ -363,6 +369,7 @@ mod tests {
             end_time: Some("2024-01-02T00:00:00Z".to_string()),
             level: Some("ERROR".to_string()),
             service: Some("vayu".to_string()),
+            index_pattern: None,
         };
 
         let body = client.build_search_body(&query);
