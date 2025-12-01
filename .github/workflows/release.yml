@@ -4,28 +4,156 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.2.0)'
+        required: true
+        type: string
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - release
+          - prerelease
+        default: release
 
 permissions:
   contents: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  create-release:
-    name: Create Release
+  # Validate version and prepare release
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            IS_PRERELEASE="${{ github.event.inputs.release_type == 'prerelease' }}"
+          else
+            # Extract version from tag
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            # Check if prerelease
+            if [[ "$VERSION" == *"-"* ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "📦 Releasing version: $VERSION (prerelease: $IS_PRERELEASE)"
+
+      - name: Verify Cargo.toml version matches (for tag push)
+        if: github.event_name == 'push'
+        run: |
+          CARGO_VERSION=$(grep -m1 'version = ' Cargo.toml | cut -d'"' -f2)
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch: Cargo.toml ($CARGO_VERSION) != tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "✅ Version verified: $CARGO_VERSION"
+
+  # Run full CI checks before release
+  ci-check:
+    name: CI Check
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --verbose
+
+  # Create GitHub release
+  create-release:
+    name: Create Release
+    needs: [prepare, ci-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create tag (for workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.prepare.outputs.tag }}" -m "Release ${{ needs.prepare.outputs.tag }}"
+          git push origin "${{ needs.prepare.outputs.tag }}"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "## What's Changed" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log --pretty=format:"* %s (%h)" >> CHANGELOG.md
+          else
+            echo "## What's Changed since $PREV_TAG" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log $PREV_TAG..HEAD --pretty=format:"* %s (%h)" >> CHANGELOG.md
+          fi
+          
+          echo "" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ needs.prepare.outputs.tag }}" >> CHANGELOG.md
+
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          body_path: CHANGELOG.md
           draft: false
-          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
-          generate_release_notes: false
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
 
+  # Build binaries for all platforms
   build:
     name: Build ${{ matrix.target }}
-    needs: create-release
+    needs: [prepare, create-release]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -34,6 +162,10 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             archive: tar.gz
@@ -52,20 +184,54 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross-compilation tools
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Create archive (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          tar czvf zeteo-${{ matrix.target }}.${{ matrix.archive }} -C target/${{ matrix.target }}/release zeteo
+          cd target/${{ matrix.target }}/release
+          tar czvf ../../../zeteo-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }} zeteo
+          cd ../../..
 
       - name: Create archive (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          7z a zeteo-${{ matrix.target }}.${{ matrix.archive }} ./target/${{ matrix.target }}/release/zeteo.exe
+          cd target/${{ matrix.target }}/release
+          7z a ../../../zeteo-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }} zeteo.exe
+          cd ../../..
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: zeteo-${{ matrix.target }}.${{ matrix.archive }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: zeteo-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
+
+  # Trigger publish after all builds complete
+  trigger-publish:
+    name: Trigger Publish
+    needs: [prepare, build]
+    if: needs.prepare.outputs.is_prerelease == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger publish workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          event-type: release-ready
+          client-payload: '{"version": "${{ needs.prepare.outputs.version }}"}'

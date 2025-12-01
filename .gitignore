@@ -1,12 +1,20 @@
+# Build artifacts
 /target
+debug/
+*.pdb
+
+# Cargo
+Cargo.lock.bak
 
 # Environment variables (contains sensitive API keys)
 .env
 .env.local
 .env.*.local
+*.env
 
 # Configuration files (may contain sensitive credentials)
 config.json
+*.local.json
 
 # IDE and editor files
 .vscode/
@@ -14,7 +22,27 @@ config.json
 *.swp
 *.swo
 *~
+.project
+.classpath
 
 # OS files
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+*.profraw
+coverage/
+tarpaulin-report.html
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
