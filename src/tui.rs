@@ -916,23 +916,21 @@ impl TuiApp {
             "copy" | "y" => {
                 if let Some(content) = self.get_last_assistant_response() {
                     match arboard::Clipboard::new() {
-                        Ok(mut clipboard) => {
-                            match clipboard.set_text(&content) {
-                                Ok(_) => {
-                                    self.status_message = Some("Copied to clipboard".to_string());
-                                    Some("copied".to_string())
-                                }
-                                Err(e) => {
-                                    self.messages.push(ChatMessage {
-                                        role: "error".to_string(),
-                                        content: format!("Failed to copy: {}", e),
-                                        tool_calls: None,
-                                        tool_call_id: None,
-                                    });
-                                    Some("copy_error".to_string())
-                                }
+                        Ok(mut clipboard) => match clipboard.set_text(&content) {
+                            Ok(_) => {
+                                self.status_message = Some("Copied to clipboard".to_string());
+                                Some("copied".to_string())
                             }
-                        }
+                            Err(e) => {
+                                self.messages.push(ChatMessage {
+                                    role: "error".to_string(),
+                                    content: format!("Failed to copy: {}", e),
+                                    tool_calls: None,
+                                    tool_call_id: None,
+                                });
+                                Some("copy_error".to_string())
+                            }
+                        },
                         Err(e) => {
                             self.messages.push(ChatMessage {
                                 role: "error".to_string(),
@@ -1046,16 +1044,14 @@ impl TuiApp {
     fn copy_last_response(&mut self) {
         if let Some(content) = self.get_last_assistant_response() {
             match arboard::Clipboard::new() {
-                Ok(mut clipboard) => {
-                    match clipboard.set_text(&content) {
-                        Ok(_) => {
-                            self.status_message = Some("Copied to clipboard".to_string());
-                        }
-                        Err(e) => {
-                            self.status_message = Some(format!("Failed to copy: {}", e));
-                        }
+                Ok(mut clipboard) => match clipboard.set_text(&content) {
+                    Ok(_) => {
+                        self.status_message = Some("Copied to clipboard".to_string());
                     }
-                }
+                    Err(e) => {
+                        self.status_message = Some(format!("Failed to copy: {}", e));
+                    }
+                },
                 Err(e) => {
                     self.status_message = Some(format!("Clipboard not available: {}", e));
                 }
