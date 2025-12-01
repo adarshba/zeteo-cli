@@ -1,4 +1,4 @@
-use super::{AiProvider, ChatRequest, ChatResponse};
+use super::{AiProvider, ChatRequest, ChatResponse, Tool, ToolCall, FunctionCall};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,8 @@ struct VertexRequest {
     contents: Vec<VertexContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     generation_config: Option<GenerationConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<VertexTool>>,
 }
 
 #[derive(Serialize)]
@@ -23,9 +25,36 @@ struct VertexContent {
     parts: Vec<VertexPart>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+enum VertexPart {
+    Text { text: String },
+    FunctionCall { function_call: VertexFunctionCall },
+    FunctionResponse { function_response: VertexFunctionResponse },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct VertexFunctionCall {
+    name: String,
+    args: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct VertexFunctionResponse {
+    name: String,
+    response: serde_json::Value,
+}
+
 #[derive(Serialize)]
-struct VertexPart {
-    text: String,
+struct VertexTool {
+    function_declarations: Vec<VertexFunctionDeclaration>,
+}
+
+#[derive(Serialize)]
+struct VertexFunctionDeclaration {
+    name: String,
+    description: String,
+    parameters: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -36,24 +65,26 @@ struct GenerationConfig {
     max_output_tokens: Option<u32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct VertexResponse {
     candidates: Vec<VertexCandidate>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct VertexCandidate {
     content: VertexResponseContent,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct VertexResponseContent {
     parts: Vec<VertexResponsePart>,
 }
 
-#[derive(Deserialize)]
-struct VertexResponsePart {
-    text: String,
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum VertexResponsePart {
+    Text { text: String },
+    FunctionCall { function_call: VertexFunctionCall },
 }
 
 impl VertexProvider {
@@ -64,6 +95,16 @@ impl VertexProvider {
             model: model.unwrap_or_else(|| "gemini-pro".to_string()),
             client: reqwest::Client::new(),
         }
+    }
+    
+    fn convert_tools(tools: &[Tool]) -> Vec<VertexTool> {
+        vec![VertexTool {
+            function_declarations: tools.iter().map(|t| VertexFunctionDeclaration {
+                name: t.function.name.clone(),
+                description: t.function.description.clone(),
+                parameters: t.function.parameters.clone(),
+            }).collect(),
+        }]
     }
 }
 
@@ -76,11 +117,37 @@ impl AiProvider for VertexProvider {
         let contents: Vec<VertexContent> = request
             .messages
             .iter()
-            .map(|m| VertexContent {
-                role: if m.role == "assistant" { "model".to_string() } else { m.role.clone() },
-                parts: vec![VertexPart {
-                    text: m.content.clone(),
-                }],
+            .filter(|m| m.role != "system") // Vertex doesn't support system role directly
+            .map(|m| {
+                let role = match m.role.as_str() {
+                    "assistant" => "model".to_string(),
+                    "tool" => "function".to_string(),
+                    _ => m.role.clone(),
+                };
+                
+                let parts = if m.role == "tool" {
+                    // Tool response
+                    vec![VertexPart::FunctionResponse {
+                        function_response: VertexFunctionResponse {
+                            name: m.tool_call_id.clone().unwrap_or_default(),
+                            response: serde_json::from_str(&m.content).unwrap_or(serde_json::json!({"result": m.content})),
+                        }
+                    }]
+                } else if let Some(tool_calls) = &m.tool_calls {
+                    // Assistant with function calls
+                    tool_calls.iter().map(|tc| {
+                        VertexPart::FunctionCall {
+                            function_call: VertexFunctionCall {
+                                name: tc.function.name.clone(),
+                                args: serde_json::from_str(&tc.function.arguments).unwrap_or_default(),
+                            }
+                        }
+                    }).collect()
+                } else {
+                    vec![VertexPart::Text { text: m.content.clone() }]
+                };
+                
+                VertexContent { role, parts }
             })
             .collect();
         
@@ -93,9 +160,12 @@ impl AiProvider for VertexProvider {
             None
         };
         
+        let tools = request.tools.as_ref().map(|t| Self::convert_tools(t));
+        
         let vertex_request = VertexRequest {
             contents,
             generation_config,
+            tools,
         };
         
         let url = format!(
@@ -122,16 +192,37 @@ impl AiProvider for VertexProvider {
             .await
             .context("Failed to parse Vertex AI response")?;
         
-        let content = vertex_response
+        let candidate = vertex_response
             .candidates
             .first()
-            .and_then(|c| c.content.parts.first())
-            .map(|p| p.text.clone())
-            .context("No content in Vertex AI response")?;
+            .context("No candidates in Vertex AI response")?;
+        
+        // Extract text content and function calls
+        let mut content = String::new();
+        let mut tool_calls = Vec::new();
+        
+        for (idx, part) in candidate.content.parts.iter().enumerate() {
+            match part {
+                VertexResponsePart::Text { text } => {
+                    content.push_str(text);
+                }
+                VertexResponsePart::FunctionCall { function_call } => {
+                    tool_calls.push(ToolCall {
+                        id: format!("call_{}", idx),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: function_call.name.clone(),
+                            arguments: serde_json::to_string(&function_call.args).unwrap_or_default(),
+                        },
+                    });
+                }
+            }
+        }
         
         Ok(ChatResponse {
             content,
             model: self.model.clone(),
+            tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
         })
     }
     
@@ -144,7 +235,7 @@ impl VertexProvider {
     async fn get_access_token() -> Result<String> {
         // Try to get access token from gcloud CLI
         let output = tokio::process::Command::new("gcloud")
-            .args(&["auth", "print-access-token"])
+            .args(["auth", "print-access-token"])
             .output()
             .await;
         

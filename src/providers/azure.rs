@@ -1,4 +1,4 @@
-use super::{AiProvider, ChatRequest, ChatResponse};
+use super::{AiProvider, ChatRequest, ChatResponse, Tool, ToolCall, FunctionCall};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -17,20 +17,41 @@ struct AzureRequest {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<Tool>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct AzureMessage {
     role: String,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<AzureToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AzureToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: AzureFunctionCall,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AzureFunctionCall {
+    name: String,
+    arguments: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct AzureResponse {
     choices: Vec<AzureChoice>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct AzureChoice {
     message: AzureMessage,
 }
@@ -54,7 +75,18 @@ impl AiProvider for AzureProvider {
             .iter()
             .map(|m| AzureMessage {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: if m.content.is_empty() { None } else { Some(m.content.clone()) },
+                tool_calls: m.tool_calls.as_ref().map(|tcs| {
+                    tcs.iter().map(|tc| AzureToolCall {
+                        id: tc.id.clone(),
+                        call_type: tc.call_type.clone(),
+                        function: AzureFunctionCall {
+                            name: tc.function.name.clone(),
+                            arguments: tc.function.arguments.clone(),
+                        },
+                    }).collect()
+                }),
+                tool_call_id: m.tool_call_id.clone(),
             })
             .collect();
         
@@ -62,6 +94,7 @@ impl AiProvider for AzureProvider {
             messages,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
+            tools: request.tools,
         };
         
         // Azure OpenAI endpoint format:
@@ -91,17 +124,28 @@ impl AiProvider for AzureProvider {
             .await
             .context("Failed to parse Azure OpenAI response")?;
         
-        let content = azure_response
+        let choice = azure_response
             .choices
             .first()
-            .context("No choices in Azure OpenAI response")?
-            .message
-            .content
-            .clone();
+            .context("No choices in Azure OpenAI response")?;
+        
+        let content = choice.message.content.clone().unwrap_or_default();
+        
+        let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
+            tcs.iter().map(|tc| ToolCall {
+                id: tc.id.clone(),
+                call_type: tc.call_type.clone(),
+                function: FunctionCall {
+                    name: tc.function.name.clone(),
+                    arguments: tc.function.arguments.clone(),
+                },
+            }).collect()
+        });
         
         Ok(ChatResponse {
             content,
             model: self.deployment.clone(),
+            tool_calls,
         })
     }
     

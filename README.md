@@ -1,520 +1,288 @@
-# zeteo-cli
+# Zeteo
 
-A Rust-based CLI AI agent with OTEL log exploration capabilities. Zeteo (from Greek, meaning "to seek") is a powerful command-line tool for exploring and analyzing OpenTelemetry logs with AI-powered assistance.
+A terminal-based AI assistant with log analysis capabilities, built with Rust.
+
+## Overview
+
+Zeteo is a command-line AI assistant that combines conversational AI with observability log analysis. It provides a responsive terminal user interface with support for multiple AI providers and log backends, allowing you to query and analyze logs using natural language.
+
+## Demo
+
+<p align="center">
+  <img src="assets/demo.gif" alt="Zeteo Demo" width="800">
+</p>
+
+*Zeteo in action: querying logs and analyzing errors using natural language*
+
+> **Note**: To generate the demo GIF, run `vhs demo.tape` (requires [vhs](https://github.com/charmbracelet/vhs))
 
 ## Features
 
-- 🔍 **Log Explorer**: Search and explore OTEL-based logs from OpenObserve, Kibana, and Elasticsearch
-- 🤖 **AI Integration**: Chat with multiple AI providers (OpenAI, Vertex AI, Google AI, Azure OpenAI)
-- 📊 **MCP Server Support**: Integrated with otel-mcp-server for seamless log queries
-- 🎨 **Beautiful CLI**: Colored output with interactive modes
+- **Multiple AI Providers**: OpenAI, Google AI, Azure OpenAI, and Vertex AI
+- **Log Analysis**: Query and analyze logs from Kibana, OpenObserve, and Elasticsearch
+- **Tool Calling**: AI can automatically query logs to answer your questions
+- **Rich TUI**: Markdown rendering, slash commands, and keyboard navigation
+- **Configurable**: Flexible configuration for backends and providers
+
+## Prerequisites
+
+- **Rust 1.70 or later** - Install from [rustup.rs](https://rustup.rs)
+- **An AI Provider API Key** - At least one of:
+  - OpenAI API key
+  - Google AI API key
+  - Azure OpenAI credentials
+  - Google Cloud project (for Vertex AI)
+- **Log Backend (optional)** - For log analysis features:
+  - Kibana instance
+  - OpenObserve instance
+  - Elasticsearch cluster
 
 ## Installation
 
-### Prerequisites
+### From Source
 
-- Rust 1.70 or later
-- Node.js (for otel-mcp-server)
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/adarshba/zeteo-cli.git
+   cd zeteo-cli
+   ```
 
-### Build from Source
+2. Build and install:
+   ```bash
+   cargo install --path .
+   ```
 
-```bash
-git clone https://github.com/adarshba/zeteo-cli
-cd zeteo-cli
-cargo build --release
-```
+   Or build without installing:
+   ```bash
+   cargo build --release
+   ```
 
-The binary will be available at `target/release/zeteo-cli`.
+   The binary will be available at `target/release/zeteo`.
 
 ## Configuration
 
-### Quick Start with .env File
+Zeteo uses two configuration methods:
+1. **Environment variables** - For AI provider credentials
+2. **config.json** - For log backend settings
 
-The easiest way to get started is to create a `.env` file with your API keys:
+### Step 1: Set Up AI Provider Credentials
+
+Create a `.env` file in the project directory (or export environment variables):
 
 ```bash
-# 1. Copy the example file
 cp .env.example .env
-
-# 2. Edit with your credentials
-nano .env
-
-# 3. Run zeteo (it will automatically load your .env file)
-zeteo chat "Hello, AI!"
 ```
 
-### MCP Server Configuration
+Then edit `.env` with your credentials:
 
-On first run, Zeteo creates a configuration file at `~/.config/zeteo-cli/config.json` with default settings for the otel-mcp-server:
+#### OpenAI
+
+```bash
+OPENAI_API_KEY=sk-your-api-key-here
+```
+
+#### Google AI
+
+```bash
+GOOGLE_API_KEY=AIza-your-api-key-here
+```
+
+#### Azure OpenAI
+
+```bash
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+```
+
+#### Vertex AI
+
+```bash
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_LOCATION=us-central1
+```
+
+### Step 2: Configure Log Backends (Optional)
+
+Create a `config.json` file to enable log analysis features. The file can be placed in:
+- Current directory (`./config.json`) - **recommended**
+- Next to the executable
+- Global config directory (`~/.config/zeteo-cli/config.json`)
+
+Start with the example configuration:
+
+```bash
+cp config.example.json config.json
+```
+
+Then edit `config.json` with your backend settings:
 
 ```json
 {
-  "servers": {
-    "otel-mcp-server": {
-      "command": "npx",
-      "args": ["-y", "otel-mcp-server"],
-      "env": {
-        "ELASTICSEARCH_URL": "http://localhost:9200",
-        "ELASTICSEARCH_USERNAME": "elastic",
-        "ELASTICSEARCH_PASSWORD": "changeme",
-        "SERVER_NAME": "otel-mcp-server",
-        "LOGLEVEL": "OFF"
-      }
+  "servers": {},
+  "backends": {
+    "kibana": {
+      "type": "kibana",
+      "url": "http://localhost:5601",
+      "auth_token": null,
+      "index_pattern": "logs-*",
+      "verify_ssl": false,
+      "version": "7.10.2"
+    },
+    "openobserve": {
+      "type": "openobserve",
+      "url": "http://localhost:5080",
+      "username": "admin@example.com",
+      "password": "changeme",
+      "organization": "default",
+      "stream": "default",
+      "verify_ssl": false
+    },
+    "elasticsearch": {
+      "type": "elasticsearch",
+      "url": "http://localhost:9200",
+      "username": "elastic",
+      "password": "changeme",
+      "index_pattern": "logs-*",
+      "verify_ssl": false
     }
   }
 }
 ```
 
-### Environment Variables
+#### Backend Configuration Options
 
-Zeteo requires different environment variables depending on the AI provider you want to use.
+**Kibana Backend**
+| Field | Description | Required |
+|-------|-------------|----------|
+| `type` | Must be `"kibana"` | Yes |
+| `url` | Kibana server URL | Yes |
+| `auth_token` | JWT or API token for authentication | No |
+| `index_pattern` | Elasticsearch index pattern | No (default: `logs-*`) |
+| `verify_ssl` | Verify SSL certificates | No (default: `false`) |
+| `version` | Kibana version | No (default: `7.10.2`) |
 
-#### Using a .env File (Recommended)
+**OpenObserve Backend**
+| Field | Description | Required |
+|-------|-------------|----------|
+| `type` | Must be `"openobserve"` | Yes |
+| `url` | OpenObserve server URL | Yes |
+| `username` | OpenObserve username | Yes |
+| `password` | OpenObserve password | Yes |
+| `organization` | Organization name | No (default: `default`) |
+| `stream` | Stream name | No (default: `default`) |
+| `verify_ssl` | Verify SSL certificates | No (default: `false`) |
 
-The easiest way to manage your API keys is to create a `.env` file in the root directory:
-
-```bash
-# Copy the example file
-cp .env.example .env
-
-# Edit with your credentials
-nano .env  # or vim, code, etc.
-```
-
-Your `.env` file should look like this:
-
-```bash
-# .env file
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxx
-GOOGLE_API_KEY=AIzaSyxxxxxxxxxxxxxxx
-GOOGLE_CLOUD_PROJECT=my-project-id
-GOOGLE_CLOUD_LOCATION=us-central1
-AZURE_OPENAI_API_KEY=xxxxxxxxxxxxxxxx
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
-AZURE_OPENAI_DEPLOYMENT=gpt-4-deployment
-```
-
-**Note:** The `.env` file is automatically loaded when you run `zeteo`. You don't need to export variables manually!
-
-#### Manual Export (Alternative)
-
-You can also export environment variables manually in your shell:
-
-**OpenAI:**
-- `OPENAI_API_KEY`: Your OpenAI API key
-
-**Google AI (Gemini):**
-- `GOOGLE_API_KEY`: Your Google AI API key from AI Studio
-
-**Vertex AI:**
-- `GOOGLE_CLOUD_PROJECT`: Your GCP project ID
-- `GOOGLE_CLOUD_LOCATION`: GCP region (optional, defaults to `us-central1`)
-- Authentication via `gcloud auth application-default login`
-
-**Azure OpenAI:**
-- `AZURE_OPENAI_API_KEY`: Your Azure OpenAI resource key
-- `AZURE_OPENAI_ENDPOINT`: Your Azure OpenAI endpoint URL
-- `AZURE_OPENAI_DEPLOYMENT`: Your model deployment name
-
-See the [AI Provider Setup](#ai-provider-setup) section below for detailed configuration instructions.
+**Elasticsearch Backend**
+| Field | Description | Required |
+|-------|-------------|----------|
+| `type` | Must be `"elasticsearch"` | Yes |
+| `url` | Elasticsearch cluster URL | Yes |
+| `username` | Elasticsearch username | No |
+| `password` | Elasticsearch password | No |
+| `index_pattern` | Index pattern to query | No (default: `logs-*`) |
+| `verify_ssl` | Verify SSL certificates | No (default: `false`) |
 
 ## Usage
 
-### View Configuration
+### Starting the Application
 
 ```bash
-zeteo-cli config --show
-```
-
-### Log Exploration
-
-Search logs with a query:
-```bash
-zeteo-cli logs --query "error" --max 50
-```
-
-Interactive mode:
-```bash
-zeteo logs --interactive
-```
-
-JSON output for scripting:
-```bash
-zeteo logs --query "error" --output json | jq '.[] | select(.level=="ERROR")'
-```
-
-### AI Chat
-
-Zeteo supports multiple AI providers with comprehensive setup instructions below.
-
-## AI Provider Setup
-
-### OpenAI Setup
-
-**Prerequisites:**
-- OpenAI account
-- API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-
-**Setup Steps:**
-
-1. Get your API key:
-   ```bash
-   # Visit https://platform.openai.com/api-keys
-   # Create a new API key
-   ```
-
-2. Set environment variable:
-   ```bash
-   export OPENAI_API_KEY="sk-your-key-here"
-   ```
-
-3. Test the connection:
-   ```bash
-   zeteo chat "Hello, OpenAI!"
-   # or explicitly specify provider
-   zeteo chat --provider openai "What are the most common error patterns?"
-   ```
-
-**Supported Models:** GPT-4o (default), GPT-4, GPT-3.5-turbo
-
-**Persist Configuration (Optional):**
-```bash
-# Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
-echo 'export OPENAI_API_KEY="sk-your-key-here"' >> ~/.bashrc
-source ~/.bashrc
-```
-
----
-
-### Google AI (Gemini) Setup
-
-**Prerequisites:**
-- Google account
-- API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
-
-**Setup Steps:**
-
-1. Get your API key:
-   ```bash
-   # Visit https://aistudio.google.com/app/apikey
-   # Click "Create API Key"
-   # Choose existing or create new Google Cloud project
-   ```
-
-2. Set environment variable:
-   ```bash
-   export GOOGLE_API_KEY="AIzaSy-your-key-here"
-   ```
-
-3. Test the connection:
-   ```bash
-   zeteo chat --provider google "Hello, Gemini!"
-   zeteo chat --provider google "Explain OTEL log structure"
-   ```
-
-**Supported Models:** Gemini Pro (default), Gemini 1.5 Pro
-
-**Persist Configuration (Optional):**
-```bash
-# Add to your shell profile
-echo 'export GOOGLE_API_KEY="AIzaSy-your-key-here"' >> ~/.bashrc
-source ~/.bashrc
-```
-
----
-
-### Vertex AI Setup
-
-**Prerequisites:**
-- Google Cloud Platform account
-- GCP project with Vertex AI API enabled
-- gcloud CLI installed
-
-**Setup Steps:**
-
-1. Install gcloud CLI (if not already installed):
-   ```bash
-   # macOS
-   brew install --cask google-cloud-sdk
-   
-   # Linux
-   curl https://sdk.cloud.google.com | bash
-   exec -l $SHELL
-   
-   # Windows
-   # Download from https://cloud.google.com/sdk/docs/install
-   ```
-
-2. Initialize gcloud and authenticate:
-   ```bash
-   # Login to your Google Cloud account
-   gcloud auth login
-   
-   # Set up application default credentials
-   gcloud auth application-default login
-   
-   # Set your project
-   gcloud config set project YOUR_PROJECT_ID
-   ```
-
-3. Enable Vertex AI API:
-   ```bash
-   gcloud services enable aiplatform.googleapis.com
-   ```
-
-4. Set environment variables:
-   ```bash
-   export GOOGLE_CLOUD_PROJECT="your-project-id"
-   export GOOGLE_CLOUD_LOCATION="us-central1"  # optional, defaults to us-central1
-   ```
-
-5. Test the connection:
-   ```bash
-   zeteo chat --provider vertex "Hello, Vertex AI!"
-   zeteo chat --provider vertex "Help me debug this issue"
-   ```
-
-**Supported Models:** Gemini Pro (default)
-
-**Available Regions:** us-central1, us-east1, us-west1, europe-west1, asia-northeast1
-
-**Persist Configuration (Optional):**
-```bash
-# Add to your shell profile
-echo 'export GOOGLE_CLOUD_PROJECT="your-project-id"' >> ~/.bashrc
-echo 'export GOOGLE_CLOUD_LOCATION="us-central1"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-**Troubleshooting:**
-```bash
-# Verify authentication
-gcloud auth application-default print-access-token
-
-# Check current project
-gcloud config get-value project
-
-# Re-authenticate if needed
-gcloud auth application-default login
-```
-
----
-
-### Azure OpenAI Setup
-
-**Prerequisites:**
-- Azure account
-- Azure OpenAI resource created
-- Model deployment configured
-
-**Setup Steps:**
-
-1. Create Azure OpenAI Resource:
-   ```bash
-   # Via Azure Portal:
-   # 1. Go to https://portal.azure.com
-   # 2. Search for "Azure OpenAI"
-   # 3. Click "Create"
-   # 4. Fill in resource details
-   # 5. Wait for deployment to complete
-   ```
-
-2. Deploy a model:
-   ```bash
-   # In Azure Portal:
-   # 1. Navigate to your Azure OpenAI resource
-   # 2. Go to "Model deployments" or "Azure OpenAI Studio"
-   # 3. Click "Create new deployment"
-   # 4. Select model (e.g., gpt-4, gpt-35-turbo)
-   # 5. Give it a deployment name (e.g., "gpt-4-deployment")
-   # 6. Click "Create"
-   ```
-
-3. Get your credentials:
-   ```bash
-   # In Azure Portal:
-   # 1. Go to your Azure OpenAI resource
-   # 2. Click "Keys and Endpoint" in the left menu
-   # 3. Copy "KEY 1" (or KEY 2)
-   # 4. Copy "Endpoint" URL
-   ```
-
-4. Set environment variables:
-   ```bash
-   export AZURE_OPENAI_API_KEY="your-key-from-azure"
-   export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
-   export AZURE_OPENAI_DEPLOYMENT="your-deployment-name"
-   ```
-
-5. Test the connection:
-   ```bash
-   zeteo chat --provider azure "Hello, Azure OpenAI!"
-   zeteo chat --provider azure "Summarize these errors"
-   ```
-
-**Supported Models:** All Azure OpenAI models (GPT-4, GPT-3.5-turbo, etc.)
-
-**API Version:** 2024-02-15-preview (automatically configured)
-
-**Persist Configuration (Optional):**
-```bash
-# Add to your shell profile
-echo 'export AZURE_OPENAI_API_KEY="your-key"' >> ~/.bashrc
-echo 'export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"' >> ~/.bashrc
-echo 'export AZURE_OPENAI_DEPLOYMENT="your-deployment-name"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-**Troubleshooting:**
-```bash
-# Test endpoint connectivity
-curl -i $AZURE_OPENAI_ENDPOINT/openai/deployments?api-version=2024-02-15-preview \
-  -H "api-key: $AZURE_OPENAI_API_KEY"
-
-# Verify environment variables are set
-echo $AZURE_OPENAI_API_KEY
-echo $AZURE_OPENAI_ENDPOINT
-echo $AZURE_OPENAI_DEPLOYMENT
-```
-
----
-
-### Quick Usage Examples
-
-After setting up your preferred provider:
-
-```bash
-# OpenAI (default)
-zeteo chat "What are the most common error patterns?"
-
-# Google AI
-zeteo chat --provider google "Explain OTEL log structure"
-
-# Vertex AI
-zeteo chat --provider vertex "Help me debug this issue"
-
-# Azure OpenAI
-zeteo chat --provider azure "Summarize these errors"
-
-# Get JSON output for scripting
-zeteo chat --output json "What is OpenTelemetry?" | jq '.content'
-```
-
----
-
-### Using Providers in REPL Mode
-
-The REPL (interactive) mode is Zeteo's flagship feature. You can start REPL mode with any provider:
-
-```bash
-# Start REPL with default provider (OpenAI)
 zeteo
-
-# Start REPL with specific provider
-zeteo --provider google
-zeteo --provider vertex
-zeteo --provider azure
 ```
 
-**REPL Features:**
-- 💬 Continuous conversation with context
-- 🎨 Beautiful ASCII art interface
-- 📊 Session statistics with `/stats`
-- 📜 Conversation history with `/history`
-- 💾 Export conversations with `/export`
-- 🔍 Search logs directly with `/logs <query>`
-- ⏱️ Response time tracking
+Zeteo will automatically detect configured providers and backends.
 
-**Example REPL Session:**
+### Specifying Provider and Backend
+
 ```bash
-$ export GOOGLE_API_KEY="your-key"
-$ zeteo --provider google
+# Use a specific AI provider
+zeteo --provider openai
+zeteo --provider google
+zeteo --provider azure
+zeteo --provider vertex
 
-  ╔═══════════════════════════════════════════════════════════════╗
-  ║        AI-Powered OTEL Log Explorer & Chat Assistant         ║
-  ╚═══════════════════════════════════════════════════════════════╝
+# Use a specific log backend
+zeteo --backend kibana
+zeteo --backend openobserve
 
-┌─ Provider: 🔵 google
-└─ Log Explorer: ✓ Connected
-
-zeteo [0]> What is OpenTelemetry?
-
-💭 Thinking...
-
-┌─ AI Response ─────────────────────────────────────
-OpenTelemetry is an observability framework...
-└───────────────────────────────────────────────────
-
-⏱  Response time: 1.23s
-
-zeteo [1]> /stats
-
-╔══════════════════════════════════════════════════╗
-║          Session Statistics                      ║
-╚══════════════════════════════════════════════════╝
-
-  💬 Total messages exchanged:     1
-  ⏱  Session duration:             0h 1m 5s
-  🤖 AI Provider:                  google
-
-zeteo [1]> /exit
-
-👋 Goodbye!
+# Combine both
+zeteo --provider openai --backend kibana
 ```
-
-See [REPL_GUIDE.md](examples/REPL_GUIDE.md) for more detailed examples.
 
 ### Shell Completions
 
-Generate completions for your shell:
-
 ```bash
 # Bash
-zeteo completions bash > /etc/bash_completion.d/zeteo
+zeteo completions bash > ~/.bash_completion.d/zeteo
 
 # Zsh
-zeteo completions zsh > ~/.zsh/completion/_zeteo
-
-# Fish
-zeteo completions fish > ~/.config/fish/completions/zeteo.fish
-
-# PowerShell
-zeteo completions powershell > ~/.config/powershell/zeteo.ps1
+zeteo completions zsh > ~/.zfunc/_zeteo
 ```
 
-## MCP Server Integration
+## Keyboard Controls
 
-Zeteo now features a **full MCP (Model Context Protocol) client implementation** with JSON-RPC 2.0 communication!
+| Key | Action |
+|-----|--------|
+| Enter | Send message |
+| Esc | Exit application |
+| Up/Down | Scroll through messages |
+| Page Up/Down | Scroll by page |
+| Left/Right | Move cursor in input |
+| Home/End | Jump to start/end of input |
+| Ctrl+C | Force exit |
 
-### Features
-- ✅ **Complete JSON-RPC 2.0 Protocol**: Proper stdin/stdout communication
-- ✅ **Initialize Handshake**: Protocol version negotiation
-- ✅ **Tools Discovery**: Automatic tool listing via `tools/list`
-- ✅ **Tool Execution**: Call tools with `tools/call` method
-- ✅ **Log Queries**: Direct integration with otel-mcp-server
-- ✅ **Process Management**: Automatic lifecycle management
-- ✅ **Error Handling**: Robust error handling with fallbacks
+## Slash Commands
 
-### Supported Backends
+Type `/` to see available commands:
 
-Zeteo integrates with the [otel-mcp-server](https://www.npmjs.com/package/otel-mcp-server) to query OpenTelemetry logs from various backends:
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| `/help` | `/h` | Show available commands |
+| `/quit` | `/q` | Exit application |
+| `/clear` | `/c` | Clear chat history |
+| `/backend` | `/b` | Switch log backend |
 
-- **Elasticsearch** - Query logs from Elasticsearch clusters
-- **OpenObserve** - Integration with OpenObserve platform
-- **Kibana** - Access logs through Kibana interface
+### Switching Backends
 
-### How It Works
+```
+/backend           # List available backends
+/backend kibana    # Switch to kibana backend
+/backend openobserve # Switch to openobserve backend
+```
 
-The MCP client:
-1. Spawns the otel-mcp-server process with configured environment
-2. Performs initialization handshake with protocol negotiation
-3. Discovers available tools (e.g., `query_logs`)
-4. Executes tool calls with proper JSON-RPC message format
-5. Parses responses and handles errors gracefully
+## Log Analysis Examples
 
-The MCP server is automatically configured and managed by Zeteo. If the server is not available, Zeteo will continue to work without log exploration features.
+Once configured with a log backend, you can ask questions like:
+
+- "Show me the last 10 errors"
+- "Find all payment failures in the last hour"
+- "What services had errors today?"
+- "Search for timeout errors in the auth service"
+- "Get log statistics for the past 30 minutes"
+
+Zeteo will automatically query your log backend and analyze the results.
 
 ## Development
+
+### Build the Project
+
+```bash
+cargo build
+```
+
+### Run Tests
+
+```bash
+cargo test
+```
+
+### Run Linting
+
+```bash
+cargo clippy
+cargo fmt --check
+```
 
 ### Project Structure
 
@@ -522,366 +290,45 @@ The MCP server is automatically configured and managed by Zeteo. If the server i
 zeteo-cli/
 ├── src/
 │   ├── main.rs           # CLI entry point
+│   ├── tui.rs            # Terminal UI
+│   ├── backends/         # Log backend clients
+│   │   ├── elasticsearch.rs
+│   │   ├── kibana.rs
+│   │   └── openobserve.rs
+│   ├── providers/        # AI provider clients
+│   │   ├── openai.rs
+│   │   ├── google.rs
+│   │   ├── azure.rs
+│   │   └── vertex.rs
 │   ├── config/           # Configuration management
-│   ├── mcp/              # MCP client integration
-│   ├── providers/        # AI provider implementations
-│   └── logs/             # Log exploration logic
-├── Cargo.toml
-└── README.md
-```
-
-### Building
-
-```bash
-cargo build
-```
-
-### Running Tests
-
-```bash
-cargo test
-```
-
-### Linting
-
-```bash
-cargo clippy
-```
-
-## 🎨 Enhanced Interactive REPL Mode
-
-Zeteo features a beautifully redesigned interactive REPL (Read-Eval-Print Loop) shell with a focus on visual appeal and user experience. The REPL is the main product of Zeteo, offering continuous conversational interaction with AI while exploring OTEL logs.
-
-**Note:** Before using REPL mode, make sure you've set up at least one AI provider. See [AI Provider Setup](#ai-provider-setup) for detailed instructions.
-
-```bash
-# Start interactive mode (default when no command specified)
-zeteo
-
-# Or specify a provider (requires provider setup first)
-zeteo --provider google      # Requires GOOGLE_API_KEY
-zeteo --provider vertex      # Requires GOOGLE_CLOUD_PROJECT and gcloud auth
-zeteo --provider azure       # Requires AZURE_OPENAI_* variables
-zeteo --provider openai      # Requires OPENAI_API_KEY (default)
-```
-
-### ✨ Visual Enhancements
-
-- **🎨 Beautiful ASCII Art Banner**: Eye-catching ZETEO logo on startup
-- **🤖 Provider Icons**: Emoji indicators (🤖 OpenAI, 🔷 Vertex, 🔵 Google, ☁️ Azure)
-- **🌈 Rich Color Scheme**: Intelligent color coding for different output types
-- **📊 Professional Layout**: Clean borders, dividers, and formatting
-- **🔢 Message Counter**: Track conversation depth in the prompt
-
-### 🚀 Key Features
-
-- **💬 Continuous conversation**: Maintains context across multiple messages
-- **📊 Session Statistics**: Track messages, duration, and performance with `/stats`
-- **⏱️ Response Timing**: See how long each AI response takes
-- **🎯 Smart Indicators**: Visual feedback with ✓, ⚠, ❌, and ℹ icons
-- **💾 Export Conversations**: Save to JSON or CSV with `/export`
-- **📜 History Management**: View conversation history with `/history`
-- **🔍 Log Integration**: Search OTEL logs directly with `/logs`
-
-### 📋 REPL Commands
-
-- `/exit`, `/quit`, `/q` 🚪 - Exit with session summary
-- `/clear` 🗑️ - Clear conversation history
-- `/help` ❓ - Show detailed help
-- `/config` ⚙️ - Show configuration info (NEW!)
-- `/stats` 📊 - Show session statistics (NEW!)
-- `/logs <query>` 🔍 - Search OTEL logs
-- `/provider` 🔄 - Show provider info (ENHANCED!)
-- `/export [file]` 💾 - Export conversation (ENHANCED!)
-- `/history` 📜 - Show conversation history (ENHANCED!)
-
-#### New `/config` Command
-
-The `/config` command displays comprehensive configuration information in one place:
-
-```bash
-zeteo [1]> /config
-
-╔══════════════════════════════════════════════════╗
-║          Configuration & Settings               ║
-╚══════════════════════════════════════════════════╝
-
-🤖 AI Provider Configuration
-  ├─ Provider:             openai
-  └─ Model:                gpt-4o (default), gpt-4, gpt-3.5-turbo
-
-🔌 MCP Server Configuration
-  ├─ Server:               otel-mcp-server
-  ├─ Command:              npx -y otel-mcp-server
-  ├─ Elasticsearch URL:    http://localhost:9200
-  ├─ ES Username:          elastic
-  └─ Status:               Connected ✓
-
-🌍 Environment Settings
-  └─ OPENAI_API_KEY:       Set ✓
-
-📁 Configuration File
-  └─ ~/.config/zeteo-cli/config.json
-```
-
-### 🎬 Example Session
-
-```bash
-$ export OPENAI_API_KEY="your-key"
-$ zeteo
-
-  ╔═══════════════════════════════════════════════════════════════╗
-  ║   ███████╗███████╗████████╗███████╗ ██████╗                 ║
-  ║   ╚══███╔╝██╔════╝╚══██╔══╝██╔════╝██╔═══██╗                ║
-  ║     ███╔╝ █████╗     ║   █████╗  ██║   ██║                ║
-  ║    ███╔╝  ██╔══╝     ██║   ██╔══╝  ██║   ██║                ║
-  ║   ███████╗███████╗   ██║   ███████╗╚██████╔╝                ║
-  ║   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ╚═════╝                 ║
-  ║        AI-Powered OTEL Log Explorer & Chat Assistant         ║
-  ╚═══════════════════════════════════════════════════════════════╝
-
-┌─ Provider: 🤖 openai
-└─ Log Explorer: ✓ Connected
-
-💡 Tip: Just type your message to start chatting!
-
-zeteo [0]> What is OpenTelemetry?
-
-💭 Thinking...
-
-┌─ AI Response ─────────────────────────────────────
-OpenTelemetry is an observability framework...
-└───────────────────────────────────────────────────
-
-⏱  Response time: 1.23s
-
-zeteo [1]> /stats
-
-╔══════════════════════════════════════════════════╗
-║          Session Statistics                      ║
-╚══════════════════════════════════════════════════╝
-
-  💬 Total messages exchanged:     1
-  📝 Messages in history:          2
-  ⏱  Session duration:             0h 1m 5s
-  🤖 AI Provider:                  openai
-  🔍 Log Explorer:                 Connected ✓
-
-zeteo [1]> /export my-conversation.json
-
-✓ Conversation exported to: my-conversation.json
-
-zeteo [1]> /exit
-
-╔═══════════════════════════════════════════════════════════╗
-║                 Thank You for Using Zeteo!               ║
-╚═══════════════════════════════════════════════════════════╝
-
-📊 Session Summary: 1 messages exchanged in 1 minutes
-👋 Goodbye!
-```
-
-See [examples/REPL_GUIDE.md](examples/REPL_GUIDE.md) for more detailed examples and tips.
-
-
-## Roadmap
-
-- [x] Basic CLI structure
-- [x] MCP server integration
-- [x] OpenAI provider support (fully implemented)
-- [x] Full Vertex AI implementation (with gcloud authentication)
-- [x] Full Google AI implementation (Gemini API)
-- [x] Full Azure OpenAI implementation
-- [x] Shell completions (bash, zsh, fish, powershell)
-- [x] JSON output format for scripting
-- [x] Graceful shutdown handling
-- [x] **Interactive REPL mode** ✨
-- [x] **Enhanced REPL UI with beautiful colors and formatting** 🎨 (NEW!)
-- [x] **Session statistics and tracking** 📊 (NEW!)
-- [x] **Response time monitoring** ⏱️ (NEW!)
-- [x] **Improved command help and documentation** 📚 (NEW!)
-- [x] **Real-time log streaming**
-- [x] **Advanced filtering and aggregation**
-- [x] **Export functionality (CSV, JSON files)**
-- [x] **Response caching for better performance**
-- [x] **Retry logic with exponential backoff**
-- [x] **Interactive TUI mode with full terminal UI** 🎉 (NEW!)
-- [x] **Full MCP client implementation** 🎉 (NEW!)
-
-**Note**: The REPL mode is now the flagship feature with a complete visual overhaul and stabilization!
-
-## Interactive TUI Mode 🎉
-
-Zeteo now features a full-screen Terminal User Interface (TUI) mode with split panels for an immersive experience!
-
-### Features
-- 🖥️ **Split Panel Layout**: Chat panel (60%) and Logs panel (40%)
-- ⌨️ **Vim-like Keybindings**: `i` for insert mode, `ESC` for normal mode
-- 🎨 **Beautiful Interface**: Color-coded panels with focus indicators
-- 📊 **Real-time Status**: Session info and message count
-- ❓ **Built-in Help**: Press `h` to toggle help screen
-- 🔄 **Panel Navigation**: Press `Tab` to cycle between panels
-
-### Quick Start
-```bash
-# Launch TUI mode with default provider (OpenAI)
-zeteo tui
-
-# Launch with specific provider
-zeteo tui --provider google
-zeteo tui --provider vertex
-zeteo tui --provider azure
-```
-
-### Keyboard Shortcuts
-- `q` - Quit application
-- `h` - Toggle help screen
-- `i` - Enter insert mode (edit input)
-- `ESC` - Exit insert mode
-- `Tab` - Cycle focus between panels
-- `Enter` - Send message (in insert mode)
-- `Ctrl+C` - Force quit
-
-### TUI Commands
-- `/clear` - Clear conversation history
-- `/logs` - Switch focus to logs panel
-- `/help` - Toggle help screen
-
-## Advanced Features
-
-### Log Filtering and Aggregation
-
-```bash
-# Filter by log level
-zeteo logs --query "error" --level ERROR
-
-# Filter by service
-zeteo logs --query "*" --service "api-gateway"
-
-# Show aggregated statistics
-zeteo logs --query "error" --aggregate
-
-# Combine filters
-zeteo logs --query "database" --level WARN --service "backend" --aggregate
-```
-
-### Export Logs
-
-```bash
-# Export to JSON
-zeteo logs --query "error" --export logs.json
-
-# Export to CSV
-zeteo logs --query "error" --export logs.csv
-```
-
-### Real-time Log Streaming
-
-```bash
-# Stream logs in real-time
-zeteo logs --query "*" --stream
-
-# Stream with filters
-zeteo logs --query "error" --level ERROR --stream
-```
-
-### Conversation Export
-
-Within REPL mode:
-```bash
-# Export as JSON (default)
-zeteo> /export my-chat.json
-
-# Export as CSV
-zeteo> /export my-chat.csv
+│   └── tools/            # Tool execution for AI
+├── config.json           # Backend configuration
+├── config.example.json   # Example configuration
+└── .env.example          # Example environment variables
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### "No AI provider configured"
 
-#### "API key not set" Error
+Ensure you have set at least one provider's environment variables. Check with:
 
-**Problem:** Environment variable not configured.
-
-**Solution:**
 ```bash
-# Check which provider you're using
-zeteo chat --provider <provider> "test"
-
-# Set the appropriate variable:
-export OPENAI_API_KEY="sk-..."        # for OpenAI
-export GOOGLE_API_KEY="AIza..."       # for Google AI
-export AZURE_OPENAI_API_KEY="..."    # for Azure
-# See provider setup sections above for complete configuration
+echo $OPENAI_API_KEY
+# or
+cat .env
 ```
 
-#### Vertex AI: "Failed to get access token"
+### "No log backend configured"
 
-**Problem:** Not authenticated with gcloud.
+Create a `config.json` file with your backend settings. The AI will still work for general questions, but log analysis features will be disabled.
 
-**Solution:**
-```bash
-# Authenticate
-gcloud auth application-default login
+### Connection errors to backends
 
-# Verify authentication
-gcloud auth application-default print-access-token
-
-# Set project
-export GOOGLE_CLOUD_PROJECT="your-project-id"
-```
-
-#### Azure OpenAI: "API error"
-
-**Problem:** Incorrect endpoint or deployment name.
-
-**Solution:**
-```bash
-# Verify your endpoint format (should include https://)
-echo $AZURE_OPENAI_ENDPOINT
-# Should be: https://your-resource.openai.azure.com
-
-# Verify deployment name matches Azure portal
-echo $AZURE_OPENAI_DEPLOYMENT
-
-# Test with curl
-curl -i $AZURE_OPENAI_ENDPOINT/openai/deployments?api-version=2024-02-15-preview \
-  -H "api-key: $AZURE_OPENAI_API_KEY"
-```
-
-#### "Unknown provider" Error
-
-**Problem:** Invalid provider name specified.
-
-**Solution:**
-```bash
-# Use one of these valid provider names:
-zeteo chat --provider openai "test"
-zeteo chat --provider google "test"
-zeteo chat --provider vertex "test"
-zeteo chat --provider azure "test"
-```
-
-### Getting Help
-
-If you encounter issues:
-
-1. Check the [AI Provider Setup](#ai-provider-setup) section for your provider
-2. Verify environment variables are set: `env | grep -E "(OPENAI|GOOGLE|AZURE)"`
-3. Try running with `--verbose` flag for more details: `zeteo --verbose chat "test"`
-4. Check the [GitHub Issues](https://github.com/adarshba/zeteo-cli/issues) page
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Verify the backend URL is accessible
+- Check authentication credentials
+- If using HTTPS with self-signed certificates, set `verify_ssl` to `false`
 
 ## License
 
-This project is inspired by gemini-cli and built for the OpenTelemetry community.
-
-## Acknowledgments
-
-- Similar to [gemini-cli](https://github.com/search?q=gemini-cli)
-- Powered by [otel-mcp-server](https://www.npmjs.com/package/otel-mcp-server)
-- Built with Rust 🦀
+MIT License. See [LICENSE](LICENSE) for details.

@@ -44,11 +44,13 @@ pub struct McpClient {
     stdin: Arc<Mutex<BufWriter<ChildStdin>>>,
     stdout: Arc<Mutex<BufReader<ChildStdout>>>,
     process: Option<Child>,
+    #[allow(dead_code)]
     server_name: String,
     request_id: Arc<Mutex<u64>>,
     initialized: bool,
 }
 
+#[allow(dead_code)]
 impl McpClient {
     pub fn new(
         command: &str,
@@ -121,6 +123,7 @@ impl McpClient {
         response.result.ok_or_else(|| anyhow!("No result in initialize response"))
     }
     
+    #[allow(dead_code)]
     pub fn list_tools(&self) -> Result<Vec<ToolInfo>> {
         if !self.initialized {
             return Err(anyhow!("Client not initialized. Call initialize() first"));
@@ -257,6 +260,7 @@ impl McpClient {
         Ok(())
     }
     
+    #[allow(dead_code)]
     pub fn is_alive(&mut self) -> bool {
         if let Some(process) = &mut self.process {
             // Try to check if process is still running (non-blocking)
