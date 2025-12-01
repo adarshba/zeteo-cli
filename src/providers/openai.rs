@@ -1,4 +1,4 @@
-use super::{AiProvider, ChatRequest, ChatResponse, Tool, ToolCall, FunctionCall};
+use super::{AiProvider, ChatRequest, ChatResponse, FunctionCall, Tool, ToolCall};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -74,21 +74,27 @@ impl AiProvider for OpenAiProvider {
             .iter()
             .map(|m| OpenAiMessage {
                 role: m.role.clone(),
-                content: if m.content.is_empty() { None } else { Some(m.content.clone()) },
+                content: if m.content.is_empty() {
+                    None
+                } else {
+                    Some(m.content.clone())
+                },
                 tool_calls: m.tool_calls.as_ref().map(|tcs| {
-                    tcs.iter().map(|tc| OpenAiToolCall {
-                        id: tc.id.clone(),
-                        call_type: tc.call_type.clone(),
-                        function: OpenAiFunctionCall {
-                            name: tc.function.name.clone(),
-                            arguments: tc.function.arguments.clone(),
-                        },
-                    }).collect()
+                    tcs.iter()
+                        .map(|tc| OpenAiToolCall {
+                            id: tc.id.clone(),
+                            call_type: tc.call_type.clone(),
+                            function: OpenAiFunctionCall {
+                                name: tc.function.name.clone(),
+                                arguments: tc.function.arguments.clone(),
+                            },
+                        })
+                        .collect()
                 }),
                 tool_call_id: m.tool_call_id.clone(),
             })
             .collect();
-        
+
         let openai_request = OpenAiRequest {
             model: self.model.clone(),
             messages,
@@ -96,8 +102,9 @@ impl AiProvider for OpenAiProvider {
             max_tokens: request.max_tokens,
             tools: request.tools,
         };
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post("https://api.openai.com/v1/chat/completions")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -105,42 +112,47 @@ impl AiProvider for OpenAiProvider {
             .send()
             .await
             .context("Failed to send request to OpenAI")?;
-        
+
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("OpenAI API error: {}", error_text);
         }
-        
+
         let openai_response: OpenAiResponse = response
             .json()
             .await
             .context("Failed to parse OpenAI response")?;
-        
+
         let choice = openai_response
             .choices
             .first()
             .context("No choices in OpenAI response")?;
-        
+
         let content = choice.message.content.clone().unwrap_or_default();
-        
+
         let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
-            tcs.iter().map(|tc| ToolCall {
-                id: tc.id.clone(),
-                call_type: tc.call_type.clone(),
-                function: FunctionCall {
-                    name: tc.function.name.clone(),
-                    arguments: tc.function.arguments.clone(),
-                },
-            }).collect()
+            tcs.iter()
+                .map(|tc| ToolCall {
+                    id: tc.id.clone(),
+                    call_type: tc.call_type.clone(),
+                    function: FunctionCall {
+                        name: tc.function.name.clone(),
+                        arguments: tc.function.arguments.clone(),
+                    },
+                })
+                .collect()
         });
-        
+
         Ok(ChatResponse {
             content,
             model: self.model.clone(),
             tool_calls,
         })
     }
-    
+
     fn provider_name(&self) -> &str {
         "OpenAI"
     }

@@ -20,7 +20,7 @@ mod tui;
 struct Cli {
     #[arg(short, long, global = true)]
     provider: Option<String>,
-    
+
     /// Backend to use for log queries (kibana, openobserve)
     #[arg(short, long, global = true)]
     backend: Option<String>,
@@ -41,9 +41,9 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = dotenv::dotenv();
-    
+
     let cli = Cli::parse();
-    
+
     match cli.command {
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
@@ -57,6 +57,6 @@ async fn main() -> Result<()> {
             app.run().await?;
         }
     }
-    
+
     Ok(())
 }

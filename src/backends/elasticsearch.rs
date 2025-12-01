@@ -39,7 +39,6 @@ impl ElasticsearchClient {
     fn build_query(&self, query: &LogQuery) -> serde_json::Value {
         let mut must = vec![];
 
-        // Add query string query if present
         if !query.query.is_empty() && query.query != "*" {
             must.push(json!({
                 "query_string": {
@@ -48,7 +47,6 @@ impl ElasticsearchClient {
             }));
         }
 
-        // Add level filter
         if let Some(level) = &query.level {
             must.push(json!({
                 "term": {
@@ -57,7 +55,6 @@ impl ElasticsearchClient {
             }));
         }
 
-        // Add service filter
         if let Some(service) = &query.service {
             must.push(json!({
                 "term": {
@@ -66,7 +63,6 @@ impl ElasticsearchClient {
             }));
         }
 
-        // Add time range filter
         if query.start_time.is_some() || query.end_time.is_some() {
             let mut range_query = json!({});
             if let Some(start) = &query.start_time {
@@ -183,7 +179,10 @@ impl LogBackendClient for ElasticsearchClient {
             .and_then(|h| h.as_array())
             .context("Invalid Elasticsearch response format")?;
 
-        Ok(hits.iter().filter_map(|hit| self.parse_log_entry(hit)).collect())
+        Ok(hits
+            .iter()
+            .filter_map(|hit| self.parse_log_entry(hit))
+            .collect())
     }
 
     async fn health_check(&self) -> Result<bool> {

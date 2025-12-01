@@ -37,10 +37,8 @@ impl KibanaClient {
     }
 
     fn build_search_body(&self, query: &LogQuery) -> serde_json::Value {
-        // Build the filter array
         let mut filters: Vec<serde_json::Value> = vec![];
 
-        // Add text search filter using multi_match for full-text search
         if !query.query.is_empty() && query.query != "*" {
             filters.push(json!({
                 "multi_match": {
@@ -51,17 +49,18 @@ impl KibanaClient {
             }));
         }
 
-        // Add time range filter
         let now = chrono::Utc::now();
-        let start_time = query.start_time
+        let start_time = query
+            .start_time
             .as_ref()
             .cloned()
             .unwrap_or_else(|| (now - chrono::Duration::hours(1)).to_rfc3339());
-        let end_time = query.end_time
+        let end_time = query
+            .end_time
             .as_ref()
             .cloned()
             .unwrap_or_else(|| now.to_rfc3339());
-        
+
         filters.push(json!({
             "range": {
                 "timestamp": {
@@ -72,13 +71,11 @@ impl KibanaClient {
             }
         }));
 
-        // Add level filter if specified
         if let Some(level) = &query.level {
             let level_upper = level.to_uppercase();
-            // Filter by level in message or log field
             filters.push(json!({
                 "multi_match": {
-                    "type": "best_fields", 
+                    "type": "best_fields",
                     "query": level_upper,
                     "fields": ["level", "severity", "log_level"],
                     "lenient": true
@@ -86,7 +83,6 @@ impl KibanaClient {
             }));
         }
 
-        // Add service filter if specified
         if let Some(service) = &query.service {
             filters.push(json!({
                 "multi_match": {
@@ -146,7 +142,6 @@ impl KibanaClient {
         let source = hit.get("_source")?;
         let fields = hit.get("fields");
 
-        // Get timestamp from fields (formatted) or _source
         let timestamp = fields
             .and_then(|f| f.get("timestamp"))
             .and_then(|t| t.as_array())
@@ -157,7 +152,6 @@ impl KibanaClient {
             .unwrap_or("")
             .to_string();
 
-        // Get level from various possible fields
         let level = source
             .get("level")
             .or_else(|| source.get("severity"))
@@ -166,14 +160,12 @@ impl KibanaClient {
             .unwrap_or("INFO")
             .to_uppercase();
 
-        // Get message - could be in various fields
         let message = source
             .get("message")
             .or_else(|| source.get("log"))
             .or_else(|| source.get("body"))
             .and_then(|v| v.as_str())
             .map(|s| {
-                // Truncate very long messages
                 if s.len() > 500 {
                     format!("{}...", &s[..500])
                 } else {
@@ -182,14 +174,12 @@ impl KibanaClient {
             })
             .unwrap_or_default();
 
-        // Get service from pod_name or service fields
         let service = source
             .get("pod_name")
             .or_else(|| source.get("service"))
             .or_else(|| source.get("service_name"))
             .and_then(|v| v.as_str())
             .map(|s| {
-                // Extract service name from pod name (e.g., breeze-api-xxx -> Vayu)
                 if s.contains("breeze-api-custom-pre") {
                     "Vayu(Jockey) Preflight".to_string()
                 } else if s.contains("breeze-api-custom") {
@@ -219,7 +209,6 @@ impl KibanaClient {
                 }
             });
 
-        // Get trace_id if available
         let trace_id = source
             .get("trace_id")
             .or_else(|| source.get("traceId"))
@@ -241,7 +230,6 @@ impl KibanaClient {
 #[async_trait]
 impl LogBackendClient for KibanaClient {
     async fn query_logs(&self, query: &LogQuery) -> Result<Vec<LogEntry>> {
-        // Kibana internal Elasticsearch search API
         let search_url = format!("{}/_plugin/kibana/internal/search/es", self.url);
         let body = self.build_search_body(query);
 
@@ -250,11 +238,13 @@ impl LogBackendClient for KibanaClient {
             .post(&search_url)
             .header("Content-Type", "application/json")
             .header("kbn-version", &self.version)
-            .header("Referer", format!("{}/_plugin/kibana/app/discover", self.url))
+            .header(
+                "Referer",
+                format!("{}/_plugin/kibana/app/discover", self.url),
+            )
             .header("Origin", &self.url)
             .json(&body);
 
-        // Add authentication via cookie if token is present
         if let Some(token) = &self.auth_token {
             request = request.header("Cookie", format!("_pomerium={}", token));
         }
@@ -279,7 +269,6 @@ impl LogBackendClient for KibanaClient {
             .await
             .context("Failed to parse Kibana response")?;
 
-        // Parse Kibana's wrapped Elasticsearch response
         let hits = result
             .get("rawResponse")
             .or_else(|| result.get("response"))
@@ -288,24 +277,22 @@ impl LogBackendClient for KibanaClient {
             .and_then(|h| h.as_array());
 
         match hits {
-            Some(hits_array) => {
-                Ok(hits_array.iter().filter_map(|hit| self.parse_log_entry(hit)).collect())
-            }
+            Some(hits_array) => Ok(hits_array
+                .iter()
+                .filter_map(|hit| self.parse_log_entry(hit))
+                .collect()),
             None => {
-                // Try direct hits structure
                 let direct_hits = result
                     .get("hits")
                     .and_then(|h| h.get("hits"))
                     .and_then(|h| h.as_array());
-                
+
                 match direct_hits {
-                    Some(hits_array) => {
-                        Ok(hits_array.iter().filter_map(|hit| self.parse_log_entry(hit)).collect())
-                    }
-                    None => {
-                        // Return empty if no hits found
-                        Ok(vec![])
-                    }
+                    Some(hits_array) => Ok(hits_array
+                        .iter()
+                        .filter_map(|hit| self.parse_log_entry(hit))
+                        .collect()),
+                    None => Ok(vec![]),
                 }
             }
         }
@@ -379,7 +366,9 @@ mod tests {
         };
 
         let body = client.build_search_body(&query);
-        let filters = body["params"]["body"]["query"]["bool"]["filter"].as_array().unwrap();
-        assert!(filters.len() >= 2); // At least time range and query
+        let filters = body["params"]["body"]["query"]["bool"]["filter"]
+            .as_array()
+            .unwrap();
+        assert!(filters.len() >= 2);
     }
 }

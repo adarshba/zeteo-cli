@@ -1,6 +1,6 @@
 pub mod elasticsearch;
-pub mod openobserve;
 pub mod kibana;
+pub mod openobserve;
 
 use anyhow::Result;
 use async_trait::async_trait;
