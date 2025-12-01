@@ -53,6 +53,85 @@ The pre-commit hook runs:
 - `cargo clippy` - Linting
 - `cargo check` - Build verification
 
+## Commit Message Format
+
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. This enables automatic changelog generation and semantic versioning.
+
+### Format
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+
+| Type       | Description                                      | Version Bump |
+| ---------- | ------------------------------------------------ | ------------ |
+| `feat`     | New feature                                      | MINOR        |
+| `fix`      | Bug fix                                          | PATCH        |
+| `docs`     | Documentation changes                            | None         |
+| `style`    | Code style changes (formatting, whitespace)      | None         |
+| `refactor` | Code refactoring (no feature or fix)             | None         |
+| `perf`     | Performance improvements                         | PATCH        |
+| `test`     | Test additions or changes                        | None         |
+| `build`    | Build system or dependencies                     | None         |
+| `ci`       | CI/CD configuration changes                      | None         |
+| `chore`    | Other changes (tooling, config, etc.)            | None         |
+| `revert`   | Revert a previous commit                         | Varies       |
+
+### Breaking Changes
+
+For breaking changes, add `BREAKING CHANGE:` in the footer or append `!` after the type:
+
+```
+feat!: remove deprecated API endpoints
+
+BREAKING CHANGE: The /api/v1/logs endpoint has been removed.
+Use /api/v2/logs instead.
+```
+
+Breaking changes trigger a MAJOR version bump.
+
+### Examples
+
+**Feature:**
+
+```
+feat(cli): add log filtering capability
+
+- Implemented pattern-based filtering
+- Added benchmark tests
+
+Closes #123
+```
+
+**Bug Fix:**
+
+```
+fix(gemini): handle API timeout errors
+
+Previously, timeouts would crash the application.
+Now we gracefully retry up to 3 times.
+
+Fixes #456
+```
+
+**Documentation:**
+
+```
+docs: update README with new configuration options
+```
+
+**CI:**
+
+```
+ci: add multi-platform release builds
+```
+
 ## Project Structure
 
 ```
@@ -81,16 +160,21 @@ zeteo-cli/
 
 1. Fork the repository
 2. Create a feature branch
-3. Make changes
+3. Make changes with conventional commit messages
 4. Run tests and lints
 5. Submit a pull request
 
 ### Guidelines
 
+- Use conventional commit messages (enforced by CI)
 - Include a clear description of changes
 - Reference related issues
 - Add tests for new functionality
 - Keep commits focused
+
+## Release Process
+
+See [RELEASE.md](RELEASE.md) for details on our automated release process.
 
 ## License
 

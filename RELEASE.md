@@ -2,6 +2,32 @@
 
 This document describes how releases are automated for zeteo.
 
+## Semantic Versioning
+
+We follow [Semantic Versioning](https://semver.org/):
+
+- **MAJOR** (1.0.0): Breaking changes
+- **MINOR** (0.1.0): New features, backward compatible
+- **PATCH** (0.0.1): Bug fixes, backward compatible
+
+Prerelease versions:
+
+- `X.Y.Z-alpha.N`: Alpha releases
+- `X.Y.Z-beta.N`: Beta releases
+- `X.Y.Z-rc.N`: Release candidates
+
+## Conventional Commits
+
+We use [Conventional Commits](https://www.conventionalcommits.org/) for automated changelog generation and version bumping:
+
+| Commit Type        | Version Bump | Example                                    |
+| ------------------ | ------------ | ------------------------------------------ |
+| `feat:`            | MINOR        | `feat(cli): add log filtering`             |
+| `fix:`             | PATCH        | `fix(api): handle timeout errors`          |
+| `BREAKING CHANGE:` | MAJOR        | `feat!: remove deprecated endpoints`       |
+
+See [CONTRIBUTING.md](CONTRIBUTING.md#commit-message-format) for the full commit message format guide.
+
 ## Automated Release Pipeline
 
 ```
@@ -66,27 +92,14 @@ Once the tag is pushed, the following happens automatically:
 
 ## Workflows
 
-| Workflow           | Trigger           | Purpose                               |
-| ------------------ | ----------------- | ------------------------------------- |
-| `ci.yml`           | Push/PR to main   | Tests, linting, formatting            |
-| `version-bump.yml` | Manual            | Bump version and create release PR    |
-| `auto-tag.yml`     | Release PR merge  | Automatically create release tag      |
-| `release.yml`      | Tag push          | Build binaries, create GitHub release |
-| `publish.yml`      | Release published | Publish to crates.io                  |
-
-## Version Scheme
-
-We follow [Semantic Versioning](https://semver.org/):
-
-- **MAJOR** (1.0.0): Breaking changes
-- **MINOR** (0.1.0): New features, backward compatible
-- **PATCH** (0.0.1): Bug fixes, backward compatible
-
-Prerelease versions:
-
-- `X.Y.Z-alpha.N`: Alpha releases
-- `X.Y.Z-beta.N`: Beta releases
-- `X.Y.Z-rc.N`: Release candidates
+| Workflow            | Trigger           | Purpose                               |
+| ------------------- | ----------------- | ------------------------------------- |
+| `ci.yml`            | Push/PR to main   | Tests, linting, formatting            |
+| `lint-commits.yml`  | Pull requests     | Validate conventional commit messages |
+| `version-bump.yml`  | Manual            | Bump version and create release PR    |
+| `auto-tag.yml`      | Release PR merge  | Automatically create release tag      |
+| `release.yml`       | Tag push          | Build binaries, create GitHub release |
+| `publish.yml`       | Release published | Publish to crates.io                  |
 
 ## Secrets Required
 

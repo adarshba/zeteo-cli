@@ -38,7 +38,7 @@ jobs:
       new_version: ${{ steps.bump.outputs.new_version }}
       branch_name: ${{ steps.bump.outputs.branch_name }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}

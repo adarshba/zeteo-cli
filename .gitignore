@@ -46,3 +46,8 @@ tarpaulin-report.html
 *.tmp
 *.temp
 *.bak
+
+# Node.js (for commitlint)
+node_modules/
+package-lock.json
+package.json
