@@ -133,7 +133,7 @@ Then edit `config.json` with your backend settings:
       "type": "openobserve",
       "url": "http://localhost:5080",
       "username": "admin@example.com",
-      "password": "your-password",
+      "password": "changeme",
       "organization": "default",
       "stream": "default",
       "verify_ssl": false

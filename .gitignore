@@ -5,6 +5,9 @@
 .env.local
 .env.*.local
 
+# Configuration files (may contain sensitive credentials)
+config.json
+
 # IDE and editor files
 .vscode/
 .idea/
