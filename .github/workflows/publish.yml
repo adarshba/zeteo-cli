@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (do not actually publish)'
+        description: "Dry run (do not actually publish)"
         required: false
         type: boolean
         default: false

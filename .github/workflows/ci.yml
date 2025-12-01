@@ -4,11 +4,11 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - '*.md'
-      - 'LICENSE'
-      - '.gitignore'
-      - 'assets/**'
-      - 'demo.tape'
+      - "*.md"
+      - "LICENSE"
+      - ".gitignore"
+      - "assets/**"
+      - "demo.tape"
   pull_request:
     branches: [main]
 
@@ -97,4 +97,4 @@ jobs:
 
       - name: Run security audit
         run: cargo audit
-        continue-on-error: true  # Don't fail CI on audit warnings, but report them
+        continue-on-error: true # Don't fail CI on audit warnings, but report them
