@@ -85,7 +85,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 ### Breaking Changes
 
-For breaking changes, add `BREAKING CHANGE:` in the footer or append `!` after the type:
+For breaking changes, add `BREAKING CHANGE:` in the commit body or footer, or append `!` after the type:
 
 ```
 feat!: remove deprecated API endpoints

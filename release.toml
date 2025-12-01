@@ -26,7 +26,3 @@ commit-message = "chore(release): bump version to {{version}}"
 # Generate changelog from conventional commits
 update = true
 changelogs = ["CHANGELOG.md"]
-
-[pre-release-replacements]
-# Update version references in other files if needed
-# Currently handled by version-bump workflow
