@@ -20,10 +20,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: false
-          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github. ref, '-rc') }}
 
   build:
     name: Build ${{ matrix.target }}
@@ -41,7 +38,7 @@ jobs:
             archive: tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
-            archive: tar.gz
+            archive: tar. gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             archive: zip
