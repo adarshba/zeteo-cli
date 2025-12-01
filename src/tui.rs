@@ -1217,7 +1217,7 @@ impl TuiApp {
             return;
         }
 
-        let modal_height = (filtered_commands.len() + 2).min(8) as u16;
+        let modal_height = (filtered_commands.len() + 2).min(10) as u16;
         let modal_width = 45u16.min(input_area.width.saturating_sub(8));
 
         let modal_area = Rect {
