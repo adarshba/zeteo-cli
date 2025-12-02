@@ -136,10 +136,7 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     needs: [prepare, ci-check]
-    if: |
-      always() && 
-      needs.ci-check.result == 'success' &&
-      (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
+    if: needs.ci-check.result == 'success' && (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -233,19 +230,19 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
           if [ -z "$PREV_TAG" ]; then
-            echo "## What's Changed" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            git log --pretty=format:"* %s (%h)" >> CHANGELOG.md
+            echo "## What's Changed" > RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+            git log --pretty=format:"* %s (%h)" >> RELEASE_NOTES.md
           else
             echo "| Previous tag: $PREV_TAG"
-            echo "## What's Changed since $PREV_TAG" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            git log $PREV_TAG..HEAD --pretty=format:"* %s (%h)" >> CHANGELOG.md
+            echo "## What's Changed since $PREV_TAG" > RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+            git log $PREV_TAG..HEAD --pretty=format:"* %s (%h)" >> RELEASE_NOTES.md
           fi
 
-          echo "" >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ needs.prepare.outputs.tag }}" >> CHANGELOG.md
+          echo "" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ needs.prepare.outputs.tag }}" >> RELEASE_NOTES.md
           echo "| Changelog generated successfully"
 
       - name: Create GitHub Release
@@ -253,7 +250,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: ${{ needs.prepare.outputs.tag }}
-          body_path: CHANGELOG.md
+          body_path: RELEASE_NOTES.md
           draft: false
           prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
 
