@@ -48,7 +48,7 @@ anyhow = "1.0"
 # UI & Display
 colored = "2.1"
 dialoguer = "0.11"
-ratatui = "0.27"
+ratatui = "0.28"
 crossterm = "0.27"
 
 # Configuration
