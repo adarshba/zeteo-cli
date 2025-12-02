@@ -1,6 +1,6 @@
 [package]
 name = "zeteo"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Zeteo Contributors"]
 description = "A Rust-based CLI AI agent with OTEL log exploration capabilities"
