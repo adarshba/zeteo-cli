@@ -30,76 +30,90 @@ See [CONTRIBUTING.md](CONTRIBUTING.md#commit-message-format) for the full commit
 
 ## Automated Release Pipeline
 
+The release process is streamlined into two workflows:
+
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Version Bump   │────▶│   PR Created    │────▶│   PR Merged     │────▶│  Auto Tag       │
-│  (manual)       │     │   (automated)   │     │   (manual)      │     │  (automated)    │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                                                │
-                                                                                ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Published to   │◀────│  Publish to     │◀────│  Build Binaries │◀────│  Release        │
-│  crates.io      │     │  crates.io      │     │  (multi-arch)   │     │  Created        │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+┌─────────────────┐                              ┌─────────────────┐
+│   CI Workflow   │                              │ Release Workflow│
+│   (automated)   │                              │  (tag-triggered)│
+│                 │                              │                 │
+│ • Build & Test  │                              │ • CI Checks     │
+│ • Clippy        │                              │ • Build Bins    │
+│ • Format Check  │                              │ • Create Release│
+│ • Security Audit│                              │ • Publish Crate │
+└─────────────────┘                              └─────────────────┘
+      ▲                                                   ▲
+      │                                                   │
+  Push/PR to main                                   Git tag push
 ```
 
-## Quick Release (One-Step)
+## Release Process
 
-To release a new version:
+There are two ways to create a release:
 
-1. Go to **Actions** → **Version Bump & Release**
-2. Click **Run workflow**
-3. Select bump type (`patch`, `minor`, or `major`)
-4. Optionally add a prerelease identifier (e.g., `alpha.1`)
-5. Choose to either:
-   - **Create PR** (recommended): Creates a PR for review, then auto-tags on merge
-   - **Skip PR**: Directly commits and tags (use with caution)
+### Option A: Manual Release (Recommended)
 
-## Manual Release
+This gives you full control over the release process.
 
-If you prefer manual control:
+#### 1. Update Version
 
-### 1. Bump Version
+Edit `Cargo.toml` to bump the version:
 
 ```bash
-# Edit Cargo.toml manually
 vim Cargo.toml
+```
 
-# Update Cargo.lock
+Update the lock file:
+
+```bash
 cargo update --workspace
+```
 
-# Commit changes
+Commit the changes:
+
+```bash
 git add Cargo.toml Cargo.lock
 git commit -m "chore: bump version to X.Y.Z"
 git push origin main
 ```
 
-### 2. Create Tag
+#### 2. Create and Push Tag
 
 ```bash
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-### 3. Release Happens Automatically
+#### 3. Automated Steps
 
-Once the tag is pushed, the following happens automatically:
+Once the tag is pushed, the release workflow automatically:
 
-- CI checks run
-- GitHub Release is created with changelog
-- Binaries are built for all platforms
-- Package is published to crates.io
+- Validates the version matches Cargo.toml
+- Runs all CI checks (build, test, clippy, fmt)
+- Builds cross-platform binaries (Linux, macOS, Windows)
+- Creates a GitHub release with changelog
+- Publishes to crates.io (stable releases only)
 
-## Workflows
+### Option B: Using GitHub Actions UI
 
-| Workflow            | Trigger           | Purpose                               |
-| ------------------- | ----------------- | ------------------------------------- |
-| `ci.yml`            | Push/PR to main   | Tests, linting, formatting            |
-| `lint-commits.yml`  | Pull requests     | Validate conventional commit messages |
-| `version-bump.yml`  | Manual            | Bump version and create release PR    |
-| `auto-tag.yml`      | Release PR merge  | Automatically create release tag      |
-| `release.yml`       | Tag push          | Build binaries, create GitHub release |
-| `publish.yml`       | Release published | Publish to crates.io                  |
+You can also trigger a release directly from GitHub:
+
+1. Go to **Actions** → **Release**
+2. Click **Run workflow**
+3. Enter the version (e.g., `1.0.0`)
+4. Select release type (`release` or `prerelease`)
+5. Click **Run workflow**
+
+This will:
+- Create the git tag automatically
+- Run the same automated steps as Option A
+
+## GitHub Actions Workflows
+
+| Workflow     | Trigger         | Purpose                                                                   |
+| ------------ | --------------- | ------------------------------------------------------------------------- |
+| `ci.yml`     | Push/PR to main | Automated testing, linting, formatting checks, and security audit         |
+| `release.yml`| Tag push/Manual | CI validation, cross-platform builds, GitHub release, crates.io publishing|
 
 ## Secrets Required
 

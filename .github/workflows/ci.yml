@@ -83,7 +83,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  # Security audit
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -95,4 +94,4 @@ jobs:
 
       - name: Run security audit
         run: cargo audit
-        continue-on-error: true # Don't fail CI on audit warnings, but report them
+        continue-on-error: true
