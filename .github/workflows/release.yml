@@ -135,8 +135,11 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    needs: [prepare, ci-check, create-tag]
-    if: always() && needs.ci-check.result == 'success'
+    needs: [prepare, ci-check]
+    if: |
+      always() && 
+      needs.ci-check.result == 'success' &&
+      (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
