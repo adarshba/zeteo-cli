@@ -26,7 +26,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Validate version and prepare release
   prepare:
     name: Prepare Release
     runs-on: ubuntu-latest
@@ -46,9 +45,7 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
             IS_PRERELEASE="${{ github.event.inputs.release_type == 'prerelease' }}"
           else
-            # Extract version from tag
             VERSION="${GITHUB_REF#refs/tags/v}"
-            # Check if prerelease
             if [[ "$VERSION" == *"-"* ]]; then
               IS_PRERELEASE="true"
             else
@@ -59,20 +56,19 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
           echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
-          echo "📦 Releasing version: $VERSION (prerelease: $IS_PRERELEASE)"
+          echo "Releasing version: $VERSION (prerelease: $IS_PRERELEASE)"
 
-      - name: Verify Cargo.toml version matches (for tag push)
+      - name: Verify Cargo.toml version matches
         if: github.event_name == 'push'
         run: |
           CARGO_VERSION=$(grep -m1 'version = ' Cargo.toml | cut -d'"' -f2)
           TAG_VERSION="${{ steps.version.outputs.version }}"
           if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
-            echo "❌ Version mismatch: Cargo.toml ($CARGO_VERSION) != tag ($TAG_VERSION)"
+            echo "Version mismatch: Cargo.toml ($CARGO_VERSION) != tag ($TAG_VERSION)"
             exit 1
           fi
-          echo "✅ Version verified: $CARGO_VERSION"
+          echo "Version verified: $CARGO_VERSION"
 
-  # Run full CI checks before release
   ci-check:
     name: CI Check
     needs: prepare
@@ -103,57 +99,33 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-  # Create GitHub release
-  create-release:
-    name: Create Release
+      - name: Security audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
+        continue-on-error: true
+
+  create-tag:
+    name: Create Git Tag
     needs: [prepare, ci-check]
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Create tag (for workflow_dispatch)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "${{ needs.prepare.outputs.tag }}" -m "Release ${{ needs.prepare.outputs.tag }}"
           git push origin "${{ needs.prepare.outputs.tag }}"
 
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Get previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
-          if [ -z "$PREV_TAG" ]; then
-            echo "## What's Changed" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            git log --pretty=format:"* %s (%h)" >> CHANGELOG.md
-          else
-            echo "## What's Changed since $PREV_TAG" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            git log $PREV_TAG..HEAD --pretty=format:"* %s (%h)" >> CHANGELOG.md
-          fi
-
-          echo "" >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ needs.prepare.outputs.tag }}" >> CHANGELOG.md
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: ${{ needs.prepare.outputs.tag }}
-          body_path: CHANGELOG.md
-          draft: false
-          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
-
-  # Build binaries for all platforms
   build:
     name: Build ${{ matrix.target }}
-    needs: [prepare, create-release]
+    needs: [prepare, ci-check, create-tag]
+    if: always() && needs.ci-check.result == 'success'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -223,15 +195,67 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: zeteo-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
 
-  # Trigger publish after all builds complete
-  trigger-publish:
-    name: Trigger Publish
+  create-release:
+    name: Create GitHub Release
     needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "## What's Changed" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log --pretty=format:"* %s (%h)" >> CHANGELOG.md
+          else
+            echo "## What's Changed since $PREV_TAG" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log $PREV_TAG..HEAD --pretty=format:"* %s (%h)" >> CHANGELOG.md
+          fi
+
+          echo "" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ needs.prepare.outputs.tag }}" >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+
+  publish:
+    name: Publish to crates.io
+    needs: [prepare, create-release]
     if: needs.prepare.outputs.is_prerelease == 'false'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger publish workflow
-        uses: peter-evans/repository-dispatch@v4
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
         with:
-          event-type: release-ready
-          client-payload: '{"version": "${{ needs.prepare.outputs.version }}"}'
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Verify package
+        run: cargo package --list
+
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
