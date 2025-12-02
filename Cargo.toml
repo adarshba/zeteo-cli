@@ -49,7 +49,7 @@ anyhow = "1.0"
 colored = "2.1"
 dialoguer = "0.11"
 ratatui = "0.27"
-crossterm = "0.27"
+crossterm = "0.29"
 
 # Configuration
 config = "0.14"
