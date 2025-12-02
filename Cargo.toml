@@ -47,7 +47,7 @@ anyhow = "1.0"
 
 # UI & Display
 colored = "2.1"
-dialoguer = "0.11"
+dialoguer = "0.12"
 ratatui = "0.27"
 crossterm = "0.27"
 
