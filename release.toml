@@ -23,6 +23,5 @@ commit-message = "chore(release): bump version to {{version}}"
 
 # Changelog settings
 [changelog]
-# Generate changelog from conventional commits
 update = true
-changelogs = ["CHANGELOG.md"]
+changelogs = ["docs/CHANGELOG.md"]
