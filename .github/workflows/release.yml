@@ -135,7 +135,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    needs: [prepare, ci-check]
+    needs: [prepare, ci-check, create-tag]
     if: needs.ci-check.result == 'success' && (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
     runs-on: ${{ matrix.os }}
     strategy:
