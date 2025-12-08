@@ -68,7 +68,7 @@ dotenv = "0.15"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 # UUID for session IDs
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.19", features = ["v4"] }
 
 # Clipboard support
 arboard = "3.4"
