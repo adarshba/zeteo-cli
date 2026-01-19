@@ -33,7 +33,7 @@ clap = { version = "4.5", features = ["derive", "env", "cargo"] }
 clap_complete = "4.5"
 
 # Async Runtime
-tokio = { version = "1.40", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 
 # HTTP Client
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
@@ -68,7 +68,7 @@ dotenv = "0.15"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 # UUID for session IDs
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.19", features = ["v4"] }
 
 # Clipboard support
 arboard = "3.4"
