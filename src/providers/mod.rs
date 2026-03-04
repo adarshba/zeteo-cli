@@ -69,11 +69,13 @@ pub trait AiProvider: Send + Sync {
 
 pub mod azure;
 pub mod google;
+pub mod ollama;
 pub mod openai;
 pub mod vertex;
 
 pub use azure::AzureProvider;
 pub use google::GoogleProvider;
+pub use ollama::OllamaProvider;
 pub use openai::OpenAiProvider;
 pub use vertex::VertexProvider;
 
