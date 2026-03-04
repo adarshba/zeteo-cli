@@ -1853,12 +1853,19 @@ fn try_provider(name: &str) -> Option<Arc<dyn AiProvider>> {
                 project, location, None,
             )))
         }
+        "ollama" => {
+            let model = std::env::var("OLLAMA_MODEL").ok();
+            let base_url = std::env::var("OLLAMA_BASE_URL").ok();
+            Some(Arc::new(crate::providers::OllamaProvider::new(
+                model, base_url,
+            )))
+        }
         _ => None,
     }
 }
 
 fn find_provider() -> Option<Arc<dyn AiProvider>> {
-    ["openai", "google", "azure", "vertex"]
+    ["openai", "google", "azure", "vertex", "ollama"]
         .iter()
         .find_map(|p| try_provider(p))
 }
