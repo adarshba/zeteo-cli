@@ -147,7 +147,8 @@ impl AiProvider for OllamaProvider {
                     call_type: tc.call_type.clone(),
                     function: FunctionCall {
                         name: tc.function.name.clone(),
-                        arguments: serde_json::to_string(&tc.function.arguments).unwrap_or_default(),
+                        arguments: serde_json::to_string(&tc.function.arguments)
+                            .unwrap_or_default(),
                     },
                 })
                 .collect()
