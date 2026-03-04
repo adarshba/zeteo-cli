@@ -7,7 +7,7 @@ description = "A Rust-based CLI AI agent with OTEL log exploration capabilities"
 license = "MIT"
 repository = "https://github.com/adarshba/zeteo-cli"
 homepage = "https://github.com/adarshba/zeteo-cli"
-readme = "README.md"
+readme = "README"
 keywords = ["cli", "ai", "otel", "logs", "gemini"]
 categories = ["command-line-utilities"]
 
