@@ -1384,7 +1384,7 @@ impl TuiApp {
                 Constraint::Min(1),
                 Constraint::Length(3),
             ])
-            .split(f.size());
+            .split(f.area());
 
         self.render_header(f, chunks[0]);
         self.render_chat(f, chunks[1]);
