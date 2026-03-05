@@ -1,38 +1,99 @@
-# Zeteo
+Zeteo
+=====
 
 A terminal-based AI assistant with observability log analysis capabilities.
 
-## Overview
+Quick Start
+-----------
 
-Zeteo is a command-line AI assistant that combines conversational AI with observability log analysis. It provides a responsive terminal user interface with support for multiple AI providers and log backends.
+* Install: cargo install zeteo
+* Run: zeteo
+* Configure: See configuration section below
 
-## Quick Start
-
-```bash
-# Install
-cargo install zeteo
-
-# Run
-export OPENAI_API_KEY=your-key
-zeteo
-```
-
-## Configuration
+Configuration
+------------
 
 Set AI provider via environment variables:
 
-| Provider     | Variables                                        |
-|--------------|--------------------------------------------------|
-| OpenAI       | `OPENAI_API_KEY`                                 |
-| Google AI    | `GOOGLE_API_KEY`                                 |
-| Azure        | `AZURE_OPENAI_*`                                 |
-| Vertex       | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`  |
-| Ollama       | `OLLAMA_MODEL`, `OLLAMA_BASE_URL`                |
+  OpenAI     - OPENAI_API_KEY
+  Google AI  - GOOGLE_API_KEY
+  Azure      - AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT
+  Vertex     - GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION
+  Ollama     - OLLAMA_MODEL, OLLAMA_BASE_URL
 
-Configure log backends in `config.json`. See `config.example.json`.
+Configure log backends in config.json. See config.example.json.
 
-## Resources
+Log backends supported:
 
-- [Releases](https://github.com/adarshba/zeteo-cli/releases)
-- [Documentation](docs)
-- [Contributing](docs/CONTRIBUTING.md)
+  * Kibana
+  * OpenObserve
+  * Elasticsearch
+
+Building from Source
+--------------------
+
+  git clone https://github.com/adarshba/zeteo-cli.git
+  cd zeteo-cli
+  cargo build
+  cargo install
+
+Development
+-----------
+
+  cargo test
+  cargo clippy
+  cargo fmt --check
+
+Who Are You?
+============
+
+Find your role below:
+
+Developer
+---------
+
+Building and running zeteo:
+
+  cargo build
+  cargo run
+
+Running tests:
+
+  cargo test
+
+Code quality:
+
+  cargo clippy
+  cargo fmt --check
+
+System Administrator
+--------------------
+
+Configuration file locations (in order):
+
+  1. ./config.json (current directory)
+  2. Next to the zeteo executable
+  3. ~/.config/zeteo/config.json (Linux/macOS)
+  4. %APPDATA%\zeteo\config.json (Windows)
+
+Environment variables can also be set in a .env file.
+
+User
+----
+
+Quick start:
+
+  1. Set your API key: export OPENAI_API_KEY=your-key
+  2. Run zeteo: zeteo
+  3. Ask questions about your logs!
+
+Optional: Configure a log backend for log analysis:
+
+  cp config.example.json config.json
+  # Edit config.json with your backend settings
+
+Communication
+=============
+
+* Issues: https://github.com/adarshba/zeteo-cli/issues
+* Releases: https://github.com/adarshba/zeteo-cli/releases
