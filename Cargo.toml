@@ -65,7 +65,7 @@ chrono = "0.4"
 dotenv = "0.15"
 
 # Redis for session persistence
-redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
 
 # UUID for session IDs
 uuid = { version = "1.20", features = ["v4"] }
