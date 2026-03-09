@@ -53,7 +53,7 @@ crossterm = "0.29"
 
 # Configuration
 config = "0.15"
-dirs = "5.0"
+dirs = "6.0"
 
 # Async Trait
 async-trait = "0.1"
